@@ -1,0 +1,2100 @@
+% \section{Architecture}
+% \section{Benchmark Curation}
+% 1. Quality filtering Rules
+% 2. Framework identification
+% 3. Auto Deploy
+% 4. Visual Validation
+% 5. Webpage Crawling
+
+% \section{Evaluation Harness}
+% 1. Docker Image
+% 2. Host.sh files
+% 3. Injected JS
+% 4. 5s-10s
+% 5. Details of visual regression
+
+% \section{Patch Generation}
+
+\section{CWV Thresholds and Pareto Calibration}
+\label{sec:eval-metrics}
+
+Table~\ref{tab:thresholds-full} reports the CWV classification thresholds defined by Google, alongside the noise tolerance and meaningful improvement thresholds we use for Pareto evaluation. Noise tolerances were calibrated from the interquartile range of run-to-run variance across the 30 baseline websites (5 runs each). Meaningful improvement thresholds are set at approximately $2\times$ the noise floor to avoid counting measurement noise as genuine improvement.
+
+\begin{table}[h]
+\centering
+\small
+\caption{CWV thresholds and Pareto calibration parameters.}
+\label{tab:thresholds-full}
+\begin{adjustbox}{max width=0.48\textwidth}
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Metric} & \textbf{Unit} & \textbf{Good ($G_m$)} & \textbf{NI ($N_m$)} & \textbf{Noise Tol.} & \textbf{Meaning. Imp.} \\
+\midrule
+LCP Mobile  & ms & $\leq$2500 & $\leq$4000 & 100 & 200 \\
+LCP Desktop & ms & $\leq$2500 & $\leq$4000 & 50  & 100 \\
+INP Mobile  & ms & $\leq$200  & $\leq$500  & 24  & 32  \\
+INP Desktop & ms & $\leq$200  & $\leq$500  & 24  & 32  \\
+CLS Mobile  & -- & $\leq$0.1  & $\leq$0.25 & 0.01 & 0.02 \\
+CLS Desktop & -- & $\leq$0.1  & $\leq$0.25 & 0.01 & 0.02 \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\end{table}
+
+\section{Per-Metric Normalized Improvement}
+\label{app:per-metric}
+
+Table~\ref{tab:per-metric-full} reports the median improvement per metric, normalized by the CWV Good threshold ($G_m$). Positive values indicate improvement (lower is better for all CWVs). The rightmost two columns (INP~Desktop and CLS~Desktop) are the primary differentiators between top and bottom agents.
+
+\begin{table}[h]
+\centering
+\small
+\caption{Median normalized improvement per metric: $(\text{baseline} - \text{agent}) / G_m$. Positive = improvement.}
+\label{tab:per-metric-full}
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Agent} & \textbf{LCP\,M} & \textbf{LCP\,D} & \textbf{INP\,M} & \textbf{INP\,D} & \textbf{CLS\,M} & \textbf{CLS\,D} \\
+\midrule
+OC+GPT-5       & +0.59 & +0.20 & $-$0.04 & 0.00   & +0.001 & +0.01  \\
+OC+GPT-5.1\,Cdx & +0.59 & +0.20 & $-$0.04 & 0.00   & +0.001 & +0.01  \\
+Codex+GPT-5    & +0.22 & +0.10 & $-$0.03 & 0.00   & 0.00   & $-$0.01 \\
+CC+Son.\,4.5    & +0.23 & +0.06 & +0.04  & 0.00   & $-$2.43 & $-$9.86 \\
+Aider+GPT-5    & +0.10 & +0.07 & +0.04  & $-$3.65 & 0.00   & $-$1.30 \\
+OC+GPT-4.1     & +0.56 & +0.20 & +0.04  & $-$3.88 & +0.001 & $-$3.20 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Patch Case Studies}
+\label{app:patches}
+
+We include representative patch excerpts that illustrate the failure modes discussed in \S\ref{sec:failure-modes}.
+
+\subsection{Site 813: Claude~Code Async CSS Causing CLS Regression}
+\label{app:patch-813-cc}
+
+\begin{lstlisting}[caption={Claude~Code patch for site 813 (excerpt). Converts stylesheets to async loading without FOUC protection, causing CLS~Desktop to rise from 0.094 to 1.08.},label={lst:cc-813},language=html,basicstyle=\ttfamily\footnotesize,breaklines=true]
+- <link href="site_libs/bootstrap/bootstrap.min.css"
+-       rel="stylesheet">
++ <link href="site_libs/bootstrap/bootstrap.min.css"
++       rel="stylesheet" media="print"
++       onload="this.media='all'">
++ <noscript><link href="site_libs/bootstrap/bootstrap.min.css"
++                  rel="stylesheet"></noscript>
+\end{lstlisting}
+
+While the \texttt{<noscript>} fallback is present, the async pattern produces FOUC during initial render: the browser paints unstyled content, then reflowed once the stylesheet loads. On sites with complex Bootstrap layouts, this generates large layout shifts. GPT-5 avoids this by keeping the stylesheet render-blocking and instead adding a \texttt{preload} hint to start the fetch earlier.
+
+\subsection{Site 404: GPT-4.1 Over-Preloading Causing INP Regression}
+\label{app:patch-404-gpt41}
+
+\begin{lstlisting}[caption={GPT-4.1 patch for site 404 (excerpt). Preloads four images simultaneously with high priority, causing INP~Desktop to rise from 16\,ms to 752\,ms.},label={lst:gpt41-404},language=html,basicstyle=\ttfamily\footnotesize,breaklines=true]
++ <link rel="preload" as="image"
++       href="./images/simonThumb.webp"
++       fetchpriority="high">
++ <link rel="preload" as="image"
++       href="./images/ticTacToadThumb.webp"
++       fetchpriority="high">
++ <link rel="preload" as="image"
++       href="./images/pomodoroThumb.webp"
++       fetchpriority="high">
++ <link rel="preload" as="image"
++       href="./images/calculatorThumb.webp"
++       fetchpriority="high">
+\end{lstlisting}
+
+By marking all four thumbnails as high-priority preloads, the browser saturates available connections and delays event-handler registration. GPT-5 preloads only the LCP image (\texttt{lanhailogo.png}).
+
+\subsection{Site 404: GPT-5 CSS Transition Replacing jQuery Animations}
+\label{app:patch-404-gpt5}
+
+\begin{lstlisting}[caption={GPT-5 patch for site 404 (excerpt). Replaces jQuery \texttt{fadeIn}/\texttt{fadeOut} with CSS transitions, eliminating synchronous layout thrashing.},label={lst:gpt5-404},language=CSS,basicstyle=\ttfamily\footnotesize,breaklines=true]
++ .projInfo {
++   opacity: 0;
++   transition: opacity 150ms ease;
++   pointer-events: none;
++ }
++ .projInfo.is-open {
++   opacity: 1;
++   pointer-events: auto;
++ }
+\end{lstlisting}
+
+This CSS-only approach avoids the forced synchronous reflows caused by jQuery's \texttt{fadeIn()}/\texttt{fadeOut()}, which read computed styles during animation frames. The corresponding JavaScript change replaces \texttt{\$(\#id).fadeIn()} with \texttt{el.classList.add('is-open')}.
+
+\subsection{Site 952: GPT-4.1 Non-Existent Resource References}
+\label{app:patch-952-gpt41}
+
+\begin{lstlisting}[caption={GPT-4.1 patch for site 952 (excerpt). References files that do not exist in the repository, causing 404 errors during page load.},label={lst:gpt41-952},language=html,basicstyle=\ttfamily\footnotesize,breaklines=true]
++ <link rel="preload" href="styles.css" as="style"/>
++ <link rel="stylesheet" href="styles.css"/>
++ <link rel="preload" as="image"
++       href="images/index-bg.webp"
++       type="image/jpeg" fetchpriority="high">
+\end{lstlisting}
+
+Neither \texttt{styles.css} nor \texttt{images/index-bg.webp} exists in the repository. The browser issues two 404 requests that compete for network bandwidth, delaying rendering of the actual page content. This suggests the model applies a memorized project template rather than analyzing the repository structure.
+
+% Requires:
+% \usepackage{array}
+% \usepackage{graphicx}
+\section{Detailed Repository Filtering Procedure}
+\label{app:repo-filtering}
+
+This appendix describes the repository filtering procedure used to identify candidate web projects for SWE-Experience-Bench. The purpose of this filtering stage is not merely to find repositories that contain HTML, CSS, or JavaScript files. Instead, our aim is more precise: we seek source-backed repositories that are likely to correspond to real public websites and that are suitable candidates for downstream local deployment, validation, and Core Web Vitals (CWV) measurement. In other words, the filtering pipeline is designed to answer three increasingly specific questions: first, does the repository structurally look like a web project; second, does its content provide concrete evidence of a deployable frontend, static-site, or documentation-site stack; and third, is the repository associated with a public website through repository metadata?
+
+To achieve this at scale, we use a three-stage static filtering pipeline over the GitHub Code 2025 corpus. Stage 1 performs a lightweight path-level scan over all repositories using file paths, file sizes, and repository identifiers. Stage 2 performs selective content-level verification only on repositories that pass the initial structural filter. Stage 3 queries GitHub repository metadata and retains repositories that expose a valid public homepage URL in the repository ``About'' field. The output of this pipeline is a smaller, higher-quality candidate pool that is likely to contain real website projects. Later stages of the benchmark pipeline then test whether these candidates can actually be deployed, rendered, validated against their public versions, and measured for CWV performance.
+
+\subsection{Input Corpus and Processing Strategy}
+
+The input corpus is represented as Parquet shards, where each row corresponds to a file-level record from a GitHub repository. Each record contains fields such as the repository identifier, file path, file size, and file content. Since the corpus is large, reading file contents for every repository would be unnecessarily expensive. The filtering pipeline therefore separates cheap structural filtering from more expensive content verification.
+
+For each shard, the first stage reads only:
+\[
+\{\texttt{repo\_id}, \texttt{file\_path}, \texttt{size}\}.
+\]
+This lets the scanner construct repository-level signatures without loading file contents. File content is accessed only in Stage 2, and only for a small whitelist of informative files inside repositories that already appear promising from Stage 1.
+
+For every repository, the scanner maintains a signal dictionary containing positive web evidence, ambiguous evidence, and negative library or backend evidence. The main fields include:
+\[
+\begin{aligned}
+&\texttt{strong\_at\_root}, \texttt{strong\_elsewhere}, \texttt{path\_strong}, \texttt{configs\_at\_root},\\
+&\texttt{ambig}, \texttt{dirs}, \texttt{deploy\_markers}, \texttt{site\_assets}, \texttt{name\_hints},\\
+&\texttt{lib\_markers}, \texttt{lib\_src\_count}, \texttt{ext\_counts},\\
+&\texttt{html\_count}, \texttt{md\_count}, \texttt{total\_files}, \texttt{total\_size},\\
+&\texttt{content\_confirms}, \texttt{content\_rejects}, \texttt{deploy\_workflow},\\
+&\texttt{readme\_deploy}, \texttt{ssg\_build\_cmds}, \texttt{dockerfile\_web},\\
+&\texttt{pkg\_deploy\_script}, \texttt{gitlab\_pages}, \texttt{meta\_generator},\\
+&\texttt{html\_richness}, \texttt{frontmatter\_post\_count}, \texttt{archetype\_triplet},\\
+&\texttt{pass2\_paths}.
+\end{aligned}
+\]
+These signals are later combined into a framework prediction and confidence score.
+
+\subsection{Stage 1: Path-Level Structural Filtering}
+
+Stage 1 is a fast coarse filter. Its purpose is to reject repositories that clearly do not resemble website projects before any content-level inspection is performed. For each file path in a repository, the scanner normalizes the path, extracts the file extension, checks whether the file is located at the repository root, and updates repository-level statistics.
+
+\subsubsection{Repository Size and File-Type Statistics}
+
+For each repository \(R\), the scanner records:
+\[
+\texttt{total\_files} = |R|,
+\]
+\[
+\texttt{total\_size} = \sum_{f \in R} \texttt{size}(f).
+\]
+It also builds an extension histogram:
+\[
+\texttt{ext\_counts}[e] = \text{number of files with extension } e.
+\]
+Separate counters are maintained for HTML and Markdown-like files:
+\[
+\texttt{html\_count}, \qquad \texttt{md\_count}.
+\]
+These statistics are used for both early noise filtering and final scoring. They help eliminate empty, near-empty, and non-web repositories, while retaining repositories that contain enough source material to be meaningful benchmark candidates.
+
+\subsubsection{Positive Website Signals}
+
+The scanner records several types of positive evidence that a repository may contain a deployable website.
+
+\paragraph{Strong framework configuration files.}
+Root-level framework configuration files are treated as strong signals because they often identify the main technology stack of the repository. Examples include:
+\[
+\texttt{next.config.js},\quad \texttt{astro.config.mjs},\quad \texttt{hugo.toml},\quad
+\texttt{gatsby-config.js},\quad \texttt{mkdocs.yml},\quad \texttt{angular.json}.
+\]
+If such a file appears at the repository root, its associated framework is added to:
+\[
+\texttt{strong\_at\_root}.
+\]
+If it appears in a nested directory, the framework is added to:
+\[
+\texttt{strong\_elsewhere}.
+\]
+Nested framework evidence is useful but weaker, because a nested configuration may correspond to a documentation subsite or example rather than the primary project.
+
+The scanner also detects framework-specific path suffixes such as:
+\[
+\texttt{.vuepress/config.js},\qquad \texttt{.vitepress/config.js}.
+\]
+These are recorded in:
+\[
+\texttt{path\_strong}.
+\]
+
+\paragraph{Deployment markers.}
+The scanner records files that indicate the repository may have been configured for hosting or deployment. Examples include:
+\[
+\texttt{CNAME},\quad \texttt{.nojekyll},\quad \texttt{netlify.toml},\quad
+\texttt{vercel.json},\quad \texttt{firebase.json},\quad \texttt{wrangler.toml}.
+\]
+These are stored in:
+\[
+\texttt{deploy\_markers}.
+\]
+Such files are valuable because they suggest that the repository is not merely a collection of web files, but may have been intended for publication as a website.
+
+\paragraph{Website assets.}
+The scanner records common website assets such as:
+\[
+\texttt{robots.txt},\quad \texttt{sitemap.xml},\quad \texttt{manifest.json},\quad
+\texttt{favicon.ico},\quad \texttt{apple-touch-icon.png},\quad \texttt{og-image.png}.
+\]
+These are added to:
+\[
+\texttt{site\_assets}.
+\]
+These files are especially informative when found at the repository root or under conventional public asset directories such as:
+\[
+\texttt{public/},\quad \texttt{static/},\quad \texttt{assets/},\quad \texttt{src/assets/}.
+\]
+
+\paragraph{Web-oriented directory layouts.}
+The scanner records directory prefixes commonly associated with frontend applications, static sites, or documentation websites. Examples include:
+\[
+\texttt{pages/},\quad \texttt{app/},\quad \texttt{public/},\quad \texttt{static/},\quad
+\texttt{content/},\quad \texttt{layouts/},\quad \texttt{themes/},\quad
+\texttt{src/routes/}.
+\]
+These signals are stored as tags in:
+\[
+\texttt{dirs}.
+\]
+For example, \texttt{pages/} and \texttt{app/} may indicate a Next.js-style project, while \texttt{content/}, \texttt{layouts/}, and \texttt{themes/} are characteristic of static site generators.
+
+\paragraph{Static-site archetypes.}
+Some static site generators are identifiable from characteristic directory combinations. The scanner therefore tracks canonical triplets such as:
+\[
+\{\texttt{\_layouts/}, \texttt{\_includes/}, \texttt{\_data/}\}
+\]
+for Jekyll,
+\[
+\{\texttt{archetypes/}, \texttt{layouts/}, \texttt{content/}\}
+\]
+for Hugo, and
+\[
+\{\texttt{source/}, \texttt{themes/}, \texttt{scaffolds/}\}
+\]
+for Hexo. If a repository contains one of these combinations, the corresponding framework is recorded in:
+\[
+\texttt{archetype\_triplet}.
+\]
+
+\paragraph{Repository-name hints.}
+The repository identifier is also searched for website-related naming patterns, including:
+\[
+\texttt{.github.io},\quad \texttt{blog},\quad \texttt{website},\quad \texttt{site},\quad
+\texttt{docs},\quad \texttt{portfolio},\quad \texttt{homepage},\quad \texttt{landing}.
+\]
+Matched patterns are stored in:
+\[
+\texttt{name\_hints}.
+\]
+These hints are not decisive on their own, but they provide useful supporting evidence.
+
+\subsubsection{Ambiguous Signals Requiring Later Verification}
+
+Some files are website-relevant but ambiguous by filename alone. Examples include:
+\[
+\texttt{package.json},\quad \texttt{Gemfile},\quad \texttt{index.html},\quad
+\texttt{index.md},\quad \texttt{\_config.yml},\quad \texttt{config.toml}.
+\]
+These are recorded in:
+\[
+\texttt{ambig}
+\]
+or:
+\[
+\texttt{configs\_at\_root}.
+\]
+For instance, \texttt{package.json} may indicate a frontend application, but it may also describe a Node library or backend service. Similarly, \texttt{config.toml} may indicate Hugo or Zola, but it may also appear in Rust projects. These files are therefore treated as provisional evidence and are checked more carefully during Stage 2.
+
+\subsubsection{Negative Library and Backend Evidence}
+
+To avoid selecting repositories that merely contain documentation or frontend-adjacent files but are primarily libraries or backend services, the scanner records negative evidence. Root-level markers such as:
+\[
+\texttt{setup.py},\quad \texttt{pyproject.toml},\quad \texttt{Cargo.toml},\quad
+\texttt{go.mod},\quad \texttt{pom.xml},\quad \texttt{build.gradle}
+\]
+are stored in:
+\[
+\texttt{lib\_markers}.
+\]
+The scanner also counts backend or library source files under directories such as:
+\[
+\texttt{lib/},\quad \texttt{test/},\quad \texttt{tests/},\quad \texttt{spec/}.
+\]
+This count is stored as:
+\[
+\texttt{lib\_src\_count}.
+\]
+This evidence does not immediately discard the repository, because many real projects contain both code and documentation. Instead, it contributes negative weight during final scoring.
+
+\subsubsection{Initial Noise-Floor Filter}
+
+After Stage 1, a repository is retained only if it contains at least one website-like signal:
+\[
+\begin{aligned}
+\texttt{has\_any\_signal} = 
+&\ \texttt{strong\_at\_root}
+\lor \texttt{strong\_elsewhere}
+\lor \texttt{path\_strong}
+\lor \texttt{configs\_at\_root}\\
+&\lor \texttt{ambig}
+\lor \texttt{deploy\_markers}
+\lor \texttt{name\_hints}
+\lor \texttt{site\_assets}.
+\end{aligned}
+\]
+Repositories with no such evidence are discarded.
+
+The repository must also satisfy a minimum noise-floor condition:
+\[
+\texttt{total\_files} \geq 4,
+\]
+\[
+\texttt{total\_size} \geq 1000 \text{ bytes},
+\]
+\[
+\texttt{web\_files} \geq 1,
+\]
+where \(\texttt{web\_files}\) is the number of files whose extensions belong to the predefined web-oriented extension set. This size and file-count check removes empty, placeholder, and near-empty repositories. Importantly, this is a minimum-size filter only: the scanner does not discard large repositories solely because of size.
+
+\subsection{Stage 2: Selective Content-Level Verification and Scoring}
+
+Stage 2 is applied only to repositories that pass Stage 1. Its purpose is to verify whether the structural evidence collected in Stage 1 is supported by actual file contents. This makes the filter more precise while avoiding the cost of reading the full contents of every repository.
+
+\subsubsection{Whitelisted Content Files}
+
+Instead of reading all files, the scanner inspects a small set of files that are especially informative for framework and deployability detection. These include:
+\[
+\texttt{package.json},\quad \texttt{\_config.yml},\quad \texttt{config.toml},\quad
+\texttt{hugo.toml},\quad \texttt{mkdocs.yml},
+\]
+\[
+\texttt{netlify.toml},\quad \texttt{vercel.json},\quad \texttt{firebase.json},\quad
+\texttt{README.md},\quad \texttt{index.html},
+\]
+\[
+\texttt{Dockerfile},\quad \texttt{Makefile},\quad \texttt{.gitlab-ci.yml},
+\]
+as well as CI workflow files under:
+\[
+\texttt{.github/workflows/}.
+\]
+For large files, only a bounded prefix is used for pattern matching. This is sufficient for most configuration, dependency, metadata, and deployment signals, which typically occur near the beginning of the file.
+
+\subsubsection{Framework Confirmation}
+
+The content pass searches whitelisted files for framework-specific patterns. Examples include:
+\[
+\texttt{"next": "..."} \Rightarrow \text{Next.js},
+\]
+\[
+\texttt{"astro": "..."} \Rightarrow \text{Astro},
+\]
+\[
+\texttt{"@sveltejs/kit"} \Rightarrow \text{SvelteKit},
+\]
+\[
+\texttt{baseURL = ...} \Rightarrow \text{Hugo},
+\]
+\[
+\texttt{site\_name: ...} \Rightarrow \text{MkDocs}.
+\]
+A matched framework is added to:
+\[
+\texttt{content\_confirms}.
+\]
+This evidence is stronger than path-level evidence because it verifies that the repository contents actually reference the detected framework.
+
+\subsubsection{Deployment and Build Evidence}
+
+The content pass also searches for evidence that the repository is meant to be built or deployed as a website. GitHub Actions workflows are checked for deployment targets such as GitHub Pages, Netlify, Vercel, Cloudflare Pages, Firebase, Azure Static Web Apps, AWS S3/CloudFront, and similar hosting providers. If such evidence is found, the repository receives:
+\[
+\texttt{deploy\_workflow} = \texttt{True}.
+\]
+The scanner also searches workflows and Makefiles for static-site or frontend build commands such as:
+\[
+\texttt{hugo},\quad \texttt{jekyll build},\quad \texttt{mkdocs build},\quad
+\texttt{next build},\quad \texttt{astro build},\quad \texttt{gatsby build}.
+\]
+Matched build commands are stored in:
+\[
+\texttt{ssg\_build\_cmds}.
+\]
+
+Other files provide additional deployment evidence. README files are searched for live deployment URLs or phrases indicating that the project is hosted. Dockerfiles are searched for web-serving patterns such as Nginx, Caddy, HTTPD, \texttt{npx serve}, and static-server commands. Package manifests are searched for deployment scripts related to GitHub Pages, Netlify, Vercel, Firebase, Surge, and Cloudflare Pages. GitLab CI files are checked for a \texttt{pages:} job.
+
+\subsubsection{Rendered HTML, Frontmatter, and False-Positive Checks}
+
+For HTML files, the scanner searches for rendered-site metadata such as:
+\[
+\texttt{<meta name="generator" content="Hugo">}.
+\]
+If found, the detected generator is recorded in:
+\[
+\texttt{meta\_generator}.
+\]
+The scanner also records HTML richness signals such as viewport tags, canonical links, OpenGraph tags, and Twitter metadata:
+\[
+\texttt{html\_richness}.
+\]
+For Markdown files under known post directories, the scanner checks for YAML or TOML frontmatter. The number of such files is recorded as:
+\[
+\texttt{frontmatter\_post\_count}.
+\]
+
+The content pass also detects false positives. For example, \texttt{config.toml} may initially appear compatible with Hugo or Zola. However, if its contents contain Rust/Cargo sections such as:
+\[
+\texttt{[package]},\quad \texttt{[dependencies]},\quad \texttt{[workspace]},
+\]
+and lack Hugo or Zola-specific keys such as:
+\[
+\texttt{baseURL},\quad \texttt{base\_url},\quad \texttt{languageCode},\quad \texttt{compile\_sass},
+\]
+the scanner records:
+\[
+\texttt{content\_rejects} = \{\texttt{cargo\_toml}\}.
+\]
+This prevents Rust repositories from being misclassified as static websites.
+
+\subsubsection{Framework Selection}
+
+After Stage 2, the classifier selects a likely framework. It first prioritizes strong configuration evidence:
+\[
+\texttt{strong\_at\_root}
+>
+\texttt{path\_strong}
+>
+\texttt{strong\_elsewhere}.
+\]
+Root-level configuration is preferred because it is more likely to describe the main repository artifact. If no strong framework is found, the classifier applies disambiguation rules. For example:
+\[
+\texttt{\_config.yml} + \texttt{Gemfile} \Rightarrow \text{Jekyll},
+\]
+\[
+\texttt{\_config.yml} + \texttt{package.json} \Rightarrow \text{Hexo},
+\]
+\[
+\texttt{config.toml} + \text{Hugo-like directories or Hugo-like content} \Rightarrow \text{Hugo}.
+\]
+If no framework is selected through these rules, fallback signals are used:
+\[
+\texttt{meta\_generator} \Rightarrow \text{framework from rendered HTML},
+\]
+\[
+\texttt{archetype\_triplet} \Rightarrow \text{Jekyll/Hugo/Hexo},
+\]
+\[
+\texttt{ssg\_build\_cmds} \Rightarrow \text{framework from build command}.
+\]
+A repository with many frontmatter-bearing Markdown posts but no identifiable framework is treated as a generic static-site candidate. A repository with root \texttt{index.html}, no library markers, and multiple HTML or Markdown files may be classified as \texttt{Static HTML}.
+
+\subsubsection{Weighted Scoring}
+
+Once a likely framework is selected, the classifier computes a weighted confidence score. Positive weights are assigned to framework identity, deployability, website assets, rendered-site metadata, and repository naming. Negative weights are assigned to evidence that the repository is primarily a library, backend package, or documentation subsite.
+
+The main positive scoring terms include:
+\[
++3 \quad \text{for root framework configuration},
+\]
+\[
++3 \quad \text{for content confirmation of the chosen framework},
+\]
+\[
++2 \quad \text{for deployment markers},
+\]
+\[
++2 \quad \text{for deployment workflows},
+\]
+\[
++2 \quad \text{for static-site build commands},
+\]
+\[
++2 \quad \text{for multiple website assets},
+\]
+\[
++2 \quad \text{for package deployment scripts},
+\]
+\[
++3 \quad \text{for rendered HTML generator metadata},
+\]
+\[
++2 \quad \text{for repository-name hints}.
+\]
+Additional smaller positive weights are assigned for Docker web-serving evidence, README deployment URLs, HTML richness, and web-extension dominance.
+
+The main negative scoring terms include:
+\[
+-3 \quad \text{for root-level library markers},
+\]
+\[
+-2 \quad \text{for library-extension dominance},
+\]
+\[
+-3 \quad \text{for substantial library source-tree evidence},
+\]
+\[
+-2 \quad \text{when framework configuration appears only under a documentation subdirectory},
+\]
+\[
+-3 \quad \text{for explicit content rejection signals such as Cargo-style TOML}.
+\]
+For documentation-oriented frameworks such as MkDocs, Sphinx, Docusaurus, GitBook, MDBook, Bookdown, Retype, and Nikola, the library-source penalty is increased when strong library evidence is also present. This reduces the chance of selecting software libraries whose documentation site is only a secondary artifact.
+
+The confidence score is computed by softly clipping the score into \([0,1]\):
+\[
+\texttt{confidence} =
+\max\left(0, \min\left(1, \frac{\texttt{score} + 2}{10}\right)\right).
+\]
+Repositories with a detected framework and score above the threshold are written to an intermediate shortlist:
+\[
+\texttt{score} \geq \tau \Rightarrow \texttt{shortlist}.
+\]
+The default threshold is:
+\[
+\tau = 5.0.
+\]
+Repositories with a detected framework but lower score are retained separately as lower-confidence candidates.
+
+\subsection{Stage 3: Public Website Association via GitHub Metadata}
+
+Stage 3 further filters the intermediate shortlist using GitHub repository metadata. The purpose of this stage is to connect static repository evidence to a public website signal. A repository may look like a web project internally, but still not correspond to a real public site. Conversely, when a repository owner explicitly provides a homepage URL in the GitHub ``About'' field, this is a useful scalable signal that the repository is associated with an externally accessible web artifact.
+
+For each shortlisted repository, the pipeline queries the GitHub API endpoint:
+\[
+\texttt{https://api.github.com/repos/\{owner\}/\{repo\}}.
+\]
+From the response, it extracts:
+\[
+\texttt{homepage}, \qquad \texttt{html\_url}, \qquad \texttt{description}.
+\]
+A repository is retained only if it has a valid, non-empty homepage URL. The homepage URL is then canonicalized by normalizing the scheme and host, removing fragments, removing default ports, and standardizing missing schemes to HTTPS when possible. Non-website targets, such as YouTube URLs, are discarded because they do not represent deployable website artifacts suitable for CWV benchmarking.
+
+The final records contain:
+\[
+\texttt{repo\_id},\quad \texttt{repo\_url},\quad \texttt{about\_url},\quad \texttt{about\_description}.
+\]
+Repositories are then deduplicated by their canonical homepage URL. This avoids retaining multiple repositories that point to the same public website.
+
+This stage is important because it tests a different kind of evidence from Stages 1 and 2. The first two stages ask whether the repository itself looks like a deployable web project. Stage 3 asks whether the repository is publicly associated with a website by its maintainer. The GitHub homepage field is not a perfect proof of deployment, because a URL may be stale, broken, or unrelated to the current source state. However, it is a strong, scalable, developer-provided signal that the repository is intended to correspond to an external web presence. Therefore, Stage 3 improves precision before the expensive downstream deployment and validation pipeline.
+
+\subsection{Merging, Deduplication, and Output}
+
+Repository signals may be observed across multiple shards, so entries corresponding to the same repository are merged before final scoring. Set-valued fields such as framework signals, deployment markers, content confirmations, and rejection reasons are unioned. Count-valued fields such as file counts, total size, HTML count, Markdown count, library source count, and frontmatter post count are summed. Boolean fields such as deployment workflow detection, Docker web-serving evidence, package deployment scripts, and GitLab Pages detection are combined by logical OR.
+
+After Stage 2, the pipeline produces an intermediate shortlist of high-scoring likely web repositories. After Stage 3, the pipeline produces a metadata-filtered set of repositories that are both internally website-like and externally associated with a public homepage URL. This final filtered set is used as input to later benchmark construction stages, where repositories are cloned, pinned, deployed, validated visually and structurally, and measured for CWV performance.
+
+\subsection{Summary of the Three-Stage Filtering Logic}
+
+The full filtering procedure can be summarized as follows:
+\[
+\begin{array}{ll}
+\textbf{Stage 1:} & \text{Use file paths, file sizes, and extensions to detect structurally web-like repositories.}\\
+\textbf{Stage 2:} & \text{Read selected informative files to verify framework, build, deployment, and false-positive signals.}\\
+\textbf{Stage 3:} & \text{Use GitHub metadata to retain repositories with a valid public homepage URL.}
+\end{array}
+\]
+
+Equivalently, the pipeline asks:
+\[
+\begin{array}{ll}
+\textbf{Question 1:} & \text{Does the repository look like a web project from its structure?}\\
+\textbf{Question 2:} & \text{Does its content confirm a real web stack or deployment path?}\\
+\textbf{Question 3:} & \text{Does the repository point to a public website?}
+\end{array}
+\]
+
+This filtering pipeline should be understood as a scalable candidate-mining procedure rather than a final proof of benchmark validity. It intentionally prioritizes high recall in early stages and then improves precision through content verification and public-homepage association. The final guarantees required by SWE-Experience-Bench are provided only in later stages: deterministic local deployment, comparison against the corresponding public rendering, visual and content validation, and repeated CWV measurement.
+
+\section{Benchmark Creation Pipeline}
+
+\subsection{Filtering from large-scale GitHub repository corpora}
+From the full repository corpora, we retain only repositories associated with the \texttt{*.github.io} namespace. This initial restriction dramatically reduces the search space while preserving a broad and diverse set of candidate websites, including personal pages, project documentation sites, and lightweight web applications. The subsequent stages of filtering are explained below.
+
+\paragraph{Content Based Filtering.}
+We apply a deterministic, multi-constraint filtering procedure to identify high-quality, deployable GitHub Pages repositories. A repository is retained if and only if it satisfies \emph{all} of the following criteria:
+
+\begin{enumerate}
+
+    \item \textbf{Minimum file count.} The repository must contain at least \textbf{10 files} in total.
+
+    \item \textbf{Minimum total size.} The cumulative size of all files in the repository must be at least \textbf{100,000}. This constraint removes lightweight templates and incomplete website drafts.
+
+    \item \textbf{Useful file dominance.} Let $N$ denote the total number of files and $N_u$ the number of files with web-relevant extensions. A repository is retained only if
+    \[
+        \frac{N_u}{N} \geq 0.7,
+    \]
+    where useful extensions include
+    \texttt{.html, .css, .js, .ts, .tsx, .jsx, .vue, .astro, .scss, .sass, .less}.
+
+    \item \textbf{Documentation upper bound.} Let $N_d$ denote the number of documentation-only files. A repository is discarded if
+    \[
+        \frac{N_d}{N} > 0.2,
+    \]
+    where documentation extensions include
+    \texttt{.md, .rst, .txt}.
+
+    \item \textbf{Configuration neutrality.} Files with configuration extensions
+    \texttt{.yml, .yaml, .json, .toml}
+    are tracked but excluded from both the useful and documentation ratios, ensuring that legitimate build and deployment configurations do not negatively affect filtering decisions.
+\end{enumerate}
+
+The stats of GH-25 and Stacks from subsequent filtering stages are in Table \ref{tab:dataset_stats} and Table \ref{tab:stack_stats}. The framework distribution of final corpus for both datasets are in \ref{tab:framework_dist} and \ref{tab:stack_stats}.
+
+\FloatBarrier
+
+%%% GH25 %%%
+% Table 2
+\begin{table}[htbp]
+\centering
+\begin{tabular}{l r}
+\hline
+\textbf{Stage} & \textbf{Repositories} \\
+\hline
+Initial corpus & $\sim$1,500,000 \\
+GitHub.io Pages & 2843 \\
+Content-based filtering & 681 \\
+Framework identification & 503 \\
+Deployment and visual validation & \textbf{382} \\
+\hline
+\end{tabular}
+\caption{GH-25 dataset reduction across successive filtering and validation stages.}
+\label{tab:dataset_stats}
+\end{table}
+
+% Table 3
+\begin{table}[htbp]
+\centering
+\begin{tabular}{l r}
+\hline
+\textbf{Framework} & \textbf{Count} \\
+\hline
+Static HTML & 265 \\
+Hexo & 55 \\
+Jekyll & 37 \\
+Hugo & 12 \\
+Next.js & 4 \\
+Quarto & 2 \\
+Vue & 2 \\
+Vue, Pelican & 1 \\
+Hexo, Hugo & 1 \\
+React, Express & 1 \\
+Express & 1 \\
+Pelican & 1 \\
+\hline
+\textbf{Total} & \textbf{382} \\
+\hline
+\end{tabular}
+\caption{GH-25 framework distribution in the final visually verified dataset.}
+\label{tab:framework_dist}
+\end{table}
+
+%%% Stack %%%
+% Table 4
+\begin{table}[htbp]
+\centering
+\begin{tabular}{l r}
+\hline
+\textbf{Stage} & \textbf{Repositories} \\
+\hline
+Initial corpus & $\sim$60,500,000 \\
+GitHub.io Pages & $\sim$1,140,000 \\
+Content-based filtering & 6,708 \\
+Framework identification & 4,335 \\
+Deployment and visual validation & \textbf{3,327} \\
+\hline
+\end{tabular}
+\caption{Stack dataset reduction across successive filtering and validation stages.}
+\label{tab:stack_stats}
+\end{table}
+
+
+
+% \begin{table}[htbp]
+% \centering
+% \begin{tabular}{l r}
+% \hline
+% \textbf{Framework} & \textbf{Count} \\
+% \hline
+% Static HTML &  \\
+% Jekyll &  \\
+% Hexo &  \\
+% React &  \\
+% Hugo &  \\
+% Next.js &  \\
+% Express &  \\
+% Vue &  \\
+% Pelican &  \\
+% Quarto &  \\
+% Flask &  \\
+% \hline
+% \end{tabular}
+% \vspace{0.5em}
+% \caption{Stack framework distribution in the final visually verified.\somesh{Whats going on here?}}
+% \label{tab:gh_2025_framework_dist}
+% \end{table}
+
+% After expanding multi-framework labels:
+% Each repo with labels like "Jekyll,Hugo" contributes +1 to BOTH Jekyll and Hugo.
+
+\begin{table}[t]
+\centering
+\small
+\setlength{\tabcolsep}{8pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{l r}
+\toprule
+\textbf{Framework} & \textbf{Count (expanded)} \\
+\midrule
+Static HTML & 2460 \\
+Hugo        & 288 \\
+Hexo        & 282 \\
+Jekyll      & 208 \\
+Express     & 59 \\
+Vue         & 57 \\
+React       & 52 \\
+Next.js     & 11 \\
+Pelican     & 9 \\
+Quarto      & 5 \\
+Flask       & 1 \\
+\midrule
+\textbf{Sum (expanded)} & \textbf{3432} \\
+\textbf{After filtering (sites retained)} & \textbf{2741} \\
+\bottomrule
+\end{tabular}
+\caption{\textbf{Per-framework counts after expanding multi-framework labels.}
+Each multi-label entry (e.g., \texttt{Jekyll,Hugo}) is added in full to each constituent framework. The original unique-repo total is 3327; the expanded sum exceeds this because repositories can be counted under multiple frameworks. After downstream filtering, 2741 sites are retained for evaluation.}
+\label{tab:framework_counts_expanded}
+\end{table}
+
+
+
+% ============== Framework-wise CWV stats (GH-25) — one column ==============
+% \begin{table}[t]
+% \centering
+% \scriptsize
+% \setlength{\tabcolsep}{3.5pt}
+% \renewcommand{\arraystretch}{1.12}
+
+% \begin{tabular}{l r|cc|cc|cc}
+% \toprule
+% \textbf{Framework} &
+% \textbf{N} &
+% \multicolumn{2}{c|}{\textbf{LCP}} &
+% \multicolumn{2}{c|}{\textbf{INP}} &
+% \multicolumn{2}{c}{\textbf{CLS}} \\
+% \cmidrule(lr){3-4}\cmidrule(lr){5-6}\cmidrule(lr){7-8}
+% & &
+% \textbf{Mean} & \textbf{SD} &
+% \textbf{Mean} & \textbf{SD} &
+% \textbf{Mean} & \textbf{SD} \\
+% \midrule
+% Static HTML & 279 & -- & -- & -- & -- & -- & -- \\
+% Jekyll      & 69  & -- & -- & -- & -- & -- & -- \\
+% Hexo        & 57  & -- & -- & -- & -- & -- & -- \\
+% React       & 29  & -- & -- & -- & -- & -- & -- \\
+% Hugo        & 19  & -- & -- & -- & -- & -- & -- \\
+% Next.js     & 12  & -- & -- & -- & -- & -- & -- \\
+% Express     & 10  & -- & -- & -- & -- & -- & -- \\
+% Vue         & 5   & -- & -- & -- & -- & -- & -- \\
+% Pelican     & 5   & -- & -- & -- & -- & -- & -- \\
+% Quarto      & 5   & -- & -- & -- & -- & -- & -- \\
+% Flask       & 4   & -- & -- & -- & -- & -- & -- \\
+% \bottomrule
+% \end{tabular}
+
+% \caption{\textbf{Framework-wise CWV statistics (GH-25 subset).}
+% N is the number of repositories per framework bucket. We report mean and standard deviation (SD) under a standardized local deployment and CWV measurement harness. Lower is better for LCP/INP; CLS is better when closer to zero.}
+% \label{tab:gh25_framework_cwv}
+% \end{table}
+% % ============================================================================
+% % ===================== TABLE: Agents (compact) =====================
+% \begin{table*}[t]
+% \centering
+% \small
+% \setlength{\tabcolsep}{7pt}
+% \renewcommand{\arraystretch}{1.15}
+
+% \begin{tabular}{l|c|c|c|c|c}
+% \toprule
+% \textbf{Agent} &
+% \textbf{LCP P75 (ms)} &
+% \textbf{INP P75 (ms)} &
+% \textbf{CLS Median} &
+% \textbf{XXX} &
+% \textbf{YYY} \\
+% \midrule
+% Aider (GPT-5)                  & -- & -- & -- & -- & -- \\
+% Codex (GPT-5)                  & -- & -- & -- & -- & -- \\
+% OpenCode (GPT-5)               & -- & -- & -- & -- & -- \\
+% ClaudeCode (Claude Sonnet 4.5) & -- & -- & -- & -- & -- \\
+% \bottomrule
+% \end{tabular}
+
+% \caption{\textbf{CWV outcomes by coding agent (post-optimization).}
+% For each agent, we report tail responsiveness via LCP P75 and INP P75, and typical layout stability via CLS median, computed over the full evaluation set \emph{after} the agent applies code changes and the site is re-measured using the same local deployment and CWV measurement harness. Lower is better for LCP and INP; CLS is better when closer to zero.}
+% \label{tab:cwv-agent-summary}
+% \end{table*}
+
+% % =================== END TABLE: Agents ===================
+
+% % ====================== TABLE: LLMs (compact) =======================
+% \begin{table*}[t]
+% \centering
+% \small
+% \setlength{\tabcolsep}{7pt}
+% \renewcommand{\arraystretch}{1.15}
+
+% \begin{tabular}{l|c|c|c|c}
+% \toprule
+% \textbf{LLM} &
+% \textbf{LCP P75 (ms)} &
+% \textbf{INP P75 (ms)} &
+% \textbf{CLS Median} &
+% \textbf{XXX}\\
+% \midrule
+% GPT-5            & -- & -- & -- & -- \\
+% Kimi K2          & -- & -- & -- & -- \\
+% GLM-4.7          & -- & -- & -- & -- \\
+% Claude Sonnet 4.5& -- & -- & -- & -- \\
+% Claude Opus 4.5  & -- & -- & -- & -- \\
+% Gemini 3 Pro     & -- & -- & -- & -- \\
+% \bottomrule
+% \end{tabular}
+
+% \caption{\textbf{CWV outcomes by underlying LLM (post-optimization).}
+% For each LLM, we aggregate runs under an identical agent interface and evaluate sites \emph{after} the model-driven edits are applied and re-measured with the same deployment and CWV harness. We report tail responsiveness via LCP P75 and INP P75, and typical layout stability via CLS median. This table is intended for model-only comparisons under a fixed execution policy: differences primarily reflect the LLM's code-change quality and decision-making. \manaswi{Once we fill numbers, update caption to explicitly call out the key inference (e.g., which model improves P75-LCP most, and which models trade off CLS/INP).}}
+% \label{tab:cwv-llm-summary}
+% \end{table*}
+
+% % ==================== END TABLE: LLMs =====================
+
+% % =================== Repo-level complexity (GH-25) ===================
+% \begin{table}[t]
+% \label{table 15: Repo Complexity}
+% \centering
+% \scriptsize
+% \setlength{\tabcolsep}{4.5pt}
+% \renewcommand{\arraystretch}{1.15}
+% \begin{tabular}{l|c|c|c|c|c}
+% \toprule
+% \textbf{Framework} &
+% \textbf{LoC} &
+% \textbf{Minification} &
+% \textbf{\shortstack{Total File\\Count}} &
+% \textbf{\shortstack{Repo Size\\(MB/GB)}} &
+% \textbf{\shortstack{Time Since\\Last Commit}} \\
+% \midrule
+% Static HTML & -- & -- & -- & -- & -- \\
+% Jekyll      & -- & -- & -- & -- & -- \\
+% Hexo        & -- & -- & -- & -- & -- \\
+% React       & -- & -- & -- & -- & -- \\
+% Hugo        & -- & -- & -- & -- & -- \\
+% Next.js     & -- & -- & -- & -- & -- \\
+% Express     & -- & -- & -- & -- & -- \\
+% Vue         & -- & -- & -- & -- & -- \\
+% Pelican     & -- & -- & -- & -- & -- \\
+% Quarto      & -- & -- & -- & -- & -- \\
+% Flask       & -- & -- & -- & -- & -- \\
+% \bottomrule
+% \end{tabular}
+% \caption{\textbf{Repository-level complexity by framework (GH-25 subset).}
+% We summarize codebase size and maintenance signals for each framework bucket, reporting lines of code (LoC), minification prevalence, total file count, on-disk repository size, and recency (time since last commit). \manaswi{Once filled, call out 1--2 key contrasts (e.g., static generators vs. React/Next.js) directly in the caption if space allows.}}
+% \label{tab:gh25_repo_complexity}
+% \end{table}
+% % ====================================================================
+
+
+% % ================= Webpage-level complexity (GH-25) =================
+% \begin{table}[t]
+% \label{table 16: Web Complexity}
+% \centering
+% \scriptsize
+% \setlength{\tabcolsep}{4.5pt}
+% \renewcommand{\arraystretch}{1.15}
+% \begin{tabular}{l|c|c|c|c|c}
+% \toprule
+% \textbf{Framework} &
+% \textbf{\shortstack{\#\\Webpages}} &
+% \textbf{\shortstack{Rendered\\Resolution}} &
+% \textbf{\shortstack{\#\\Functions}} &
+% \textbf{\shortstack{\# Interactive\\DOM Nodes}} &
+% \textbf{\shortstack{\# Network\\Calls}} \\
+% \midrule
+% Static HTML & -- & -- & -- & -- & -- \\
+% Jekyll      & -- & -- & -- & -- & -- \\
+% Hexo        & -- & -- & -- & -- & -- \\
+% React       & -- & -- & -- & -- & -- \\
+% Hugo        & -- & -- & -- & -- & -- \\
+% Next.js     & -- & -- & -- & -- & -- \\
+% Express     & -- & -- & -- & -- & -- \\
+% Vue         & -- & -- & -- & -- & -- \\
+% Pelican     & -- & -- & -- & -- & -- \\
+% Quarto      & -- & -- & -- & -- & -- \\
+% Flask       & -- & -- & -- & -- & -- \\
+% \bottomrule
+% \end{tabular}
+% \caption{\textbf{Webpage-level complexity by framework (GH-25 subset).}
+% For each framework bucket, we summarize observable runtime complexity from a standardized local render and crawl.\manaswi{After populating values, add a short “reader takeaway” clause (e.g., which stacks are most network-heavy / DOM-heavy).}}
+% \label{tab:gh25_webpage_complexity}
+% \end{table}
+% % ====================================================================
+
+% % ================= Framework-wise CWV stats (GH-25) =================
+% \begin{table*}[t]
+% \centering
+% \captionsetup{width=\textwidth}
+% \small
+% \setlength{\tabcolsep}{6pt}
+% \renewcommand{\arraystretch}{1.15}
+
+% \begin{tabular}{l r|cc|cc|cc}
+% \toprule
+% \textbf{Framework} &
+% \textbf{Repo. count} &
+% \multicolumn{2}{c|}{\textbf{LCP (ms)}} &
+% \multicolumn{2}{c|}{\textbf{INP (ms)}} &
+% \multicolumn{2}{c}{\textbf{CLS}} \\
+% \cmidrule(lr){3-4}\cmidrule(lr){5-6}\cmidrule(lr){7-8}
+% & &
+% \textbf{Mean} & \textbf{Std. dev.} &
+% \textbf{Mean} & \textbf{Std. dev.} &
+% \textbf{Mean} & \textbf{Std. dev.} \\
+% \midrule
+% Static HTML & 279 & -- & -- & -- & -- & -- & -- \\
+% Jekyll      & 69  & -- & -- & -- & -- & -- & -- \\
+% Hexo        & 57  & -- & -- & -- & -- & -- & -- \\
+% React       & 29  & -- & -- & -- & -- & -- & -- \\
+% Hugo        & 19  & -- & -- & -- & -- & -- & -- \\
+% Next.js     & 12  & -- & -- & -- & -- & -- & -- \\
+% Express     & 10  & -- & -- & -- & -- & -- & -- \\
+% Vue         & 5   & -- & -- & -- & -- & -- & -- \\
+% Pelican     & 5   & -- & -- & -- & -- & -- & -- \\
+% Quarto      & 5   & -- & -- & -- & -- & -- & -- \\
+% Flask       & 4   & -- & -- & -- & -- & -- & -- \\
+% \bottomrule
+% \end{tabular}
+
+% \caption{\textbf{Framework-wise distribution and Core Web Vitals statistics (GH-25 subset).}
+% For each framework bucket, we report the number of repositories and the mean $\pm$ standard deviation of CWV metrics computed under our standardized local deployment and measurement harness. LCP and INP are in milliseconds (lower is better); CLS is unitless (closer to zero is better).}
+% \label{tab:gh25_framework_cwv}
+% \end{table*}
+% % ===================================================================
+
+
+
+% plots of CWV scores versus each of the Variables in this table
+% stratify 
+
+% X-axis: Number of Lines of Code
+% Y-axis: LCP
+% Avg, Variance over the line plot
+% Color coded per Tech Stack
+
+% what could be of interest in terms of core web vitals?
+% what do you want to see from a plot?
+% why?
+
+% \begin{table*}[htbp]
+% \centering
+% \small
+% \begin{tabular}{l r cc cc cc}
+% \hline
+% \textbf{Framework} &
+% \textbf{Repo. count} &
+% \multicolumn{2}{c}{\textbf{LCP}} &
+% \multicolumn{2}{c}{\textbf{INP}} &
+% \multicolumn{2}{c}{\textbf{CLS}} \\
+% \cline{3-8}
+% & &
+% \textbf{Mean} & \textbf{stddev} &
+% \textbf{Mean} & \textbf{stddev} &
+% \textbf{Mean} & \textbf{stddev} \\
+% \hline
+% Static HTML & 279 & -- & -- & -- & -- & -- & -- \\
+% Jekyll      & 69  & -- & -- & -- & -- & -- & -- \\
+% Hexo        & 57  & -- & -- & -- & -- & -- & -- \\
+% React       & 29  & -- & -- & -- & -- & -- & -- \\
+% Hugo        & 19  & -- & -- & -- & -- & -- & -- \\
+% Next.js     & 12  & -- & -- & -- & -- & -- & -- \\
+% Express     & 10  & -- & -- & -- & -- & -- & -- \\
+% Vue         & 5   & -- & -- & -- & -- & -- & -- \\
+% Pelican     & 5   & -- & -- & -- & -- & -- & -- \\
+% Quarto      & 5   & -- & -- & -- & -- & -- & -- \\
+% Flask       & 4   & -- & -- & -- & -- & -- & -- \\
+% \hline
+% \end{tabular}
+% \vspace{0.5em}
+% \caption{Framework-wise distribution and Core Web Vitals (CWV) statistics in GH-25.}
+% \label{tab:gh25_framework_cwv}
+% \end{table*}
+
+% \begin{table}[htbp]
+% \centering
+% \scriptsize
+% \begin{tabular}{l c c c c c}
+% \hline
+% \textbf{Framework} &
+% \textbf{LoC} &
+% \textbf{Minification} &
+% \textbf{Total File Count} &
+% \textbf{Repository Size on Disk (MB/GB)} &
+% \textbf{Time Since Last Commit} \\
+% \hline
+% Static HTML & -- & -- & -- & -- & -- \\
+% Jekyll      & -- & -- & -- & -- & -- \\
+% Hexo        & -- & -- & -- & -- & -- \\
+% React       & -- & -- & -- & -- & -- \\
+% Hugo        & -- & -- & -- & -- & -- \\
+% Next.js     & -- & -- & -- & -- & -- \\
+% Express     & -- & -- & -- & -- & -- \\
+% Vue         & -- & -- & -- & -- & -- \\
+% Pelican     & -- & -- & -- & -- & -- \\
+% Quarto      & -- & -- & -- & -- & -- \\
+% Flask       & -- & -- & -- & -- & -- \\
+% \hline
+% \end{tabular}
+% \vspace{0.3em}
+% \caption{Repository-level complexity statistics across frameworks in GH-25.}
+% \label{tab:gh25_repo_complexity}
+% \end{table}
+
+% \begin{table}[htbp]
+% \centering
+% \scriptsize
+% \begin{tabular}{l c c c c c}
+% \hline
+% \textbf{Framework} &
+% \textbf{Number of Webpages} &
+% \textbf{Rendered Resolution} &
+% \textbf{Number of Functions} &
+% \textbf{Number of Interaction DOM Nodes} &
+% \textbf{Number of Network Calls} \\
+% \hline
+% Static HTML & -- & -- & -- & -- & -- \\
+% Jekyll      & -- & -- & -- & -- & -- \\
+% Hexo        & -- & -- & -- & -- & -- \\
+% React       & -- & -- & -- & -- & -- \\
+% Hugo        & -- & -- & -- & -- & -- \\
+% Next.js     & -- & -- & -- & -- & -- \\
+% Express     & -- & -- & -- & -- & -- \\
+% Vue         & -- & -- & -- & -- & -- \\
+% Pelican     & -- & -- & -- & -- & -- \\
+% Quarto      & -- & -- & -- & -- & -- \\
+% Flask       & -- & -- & -- & -- & -- \\
+% \hline
+% \end{tabular}
+% \vspace{0.3em}
+% \caption{Webpage-level complexity statistics across frameworks in GH-25.}
+% \label{tab:gh25_webpage_complexity}
+% \end{table}
+
+
+% \FloatBarrier
+
+\subsection{Framework Identification}
+\label{subsection:build_commands}
+% \somesh{Build Commands}
+The 11 tech stack detection files contain implementations based on the heuristics attached in Table ~\ref{tab:framework-detection-heuristics}. 
+
+
+
+
+
+\subsection{Automated Deployment}
+Following patch application, the modified repository is deployed automatically in a controlled local environment using framework-specific host scripts. Each repository is associated with a designated \texttt{host\_\{FRAMEWORK\}.sh} script that encodes a set of heuristics for launching the application.
+
+The host script operates directly on the repository contents and attempts to infer a valid runtime entrypoint without requiring additional metadata. It first checks for canonical configuration files (e.g., \texttt{package.json}) and attempts to install dependencies and launch the application using standard commands. If no explicit start script is available, the script searches for common server entrypoints (e.g., \texttt{server.js}, \texttt{app.js}, \texttt{index.js}) and launches them directly. To accommodate non-standard repository layouts, the deployment logic also probes common subdirectories for valid entrypoints and repeats the inference process within those directories. Deployments are executed on a fixed local port and logged for inspection. 
+
+% \arnav{NOT SURE: If the repository contains no recognizable server configuration but includes a static entry file (e.g., \texttt{index.html}), the script falls back to serving the repository as a static site using a lightweight HTTP server. If no viable entrypoint can be identified or the application fails to become reachable within a bounded timeout window, the run is terminated and excluded from subsequent evaluation.}
+
+% Core Web Vitals are measured using an automated browser-based harness built on Playwright with JavaScript instrumentation injected into the rendered page. Measurements are conducted after patch application and are performed separately for mobile and desktop device profiles.
+
+% For each device profile, the harness executes multiple independent runs to account for measurement variability. Standard CWV metrics—including Largest Contentful Paint (LCP), Cumulative Layout Shift (CLS), and Interaction to Next Paint (INP)—are recorded and aggregated per run. All measurements are performed against the locally hosted application, eliminating network variability and external service dependencies.
+\section{Internal Page Discovery and Deduplication Details}
+\label{app:page_dedup}
+
+We provide full details of sitemap parsing, bounded crawl, URL normalization rules, template canonicalization, and DOM-level deduplication, along with ablations on page caps and depth bounds.
+
+
+\subsection{Internal page expansion: sitemap/crawl discovery and URL-template deduplication}
+\label{app:internal-page-discovery}
+
+\paragraph{Purpose.}
+For webpage-wise CWV scoring, we expand each site beyond its homepage by constructing a bounded set of same-origin internal URLs. The goal is to increase coverage across page types while keeping runtime comparable across sites and avoiding redundant evaluation of near-identical pages (e.g., paginated lists or ID-based routes).
+
+
+\noindent\textbf{Inputs.}
+For each dataset entry (one GitHub Pages site derived from \texttt{REPO\_ID}), the mechanism takes as input:
+\begin{itemize}
+    \item \textbf{Homepage URL (base URL).} The site homepage URL constructed from \texttt{REPO\_ID} using the mapping above (user site or project site). This URL is the starting point for sitemap lookup and, if needed, bounded crawling.
+    \item \textbf{Discovery bounds.} Two parameters that bound discovery cost and runtime:
+    \begin{itemize}
+        \item \texttt{max\_pages}: the maximum number of same-origin HTML-like pages to retain in the discovered list.
+        \item \texttt{max\_depth}: the maximum crawl depth when using HTML-link crawling (depth 0 corresponds to the homepage).
+    \end{itemize}
+    \item \textbf{Optional URL filters.} Two optional regular-expression filters \texttt{allow\_regex} / \texttt{deny\_regex} that can further restrict which URLs are eligible during discovery.
+\end{itemize}
+
+\noindent\textbf{Outputs.}
+For each site, the mechanism returns two ordered URL lists:
+\begin{itemize}
+    \item \textbf{\texttt{webpages}}: the discovered same-origin candidate pages (bounded by \texttt{max\_pages}, and by \texttt{max\_depth} in the crawling case).
+    \item \textbf{\texttt{deduped\_webpages}}: a reduced list obtained by URL-template deduplication (one representative URL per structural URL pattern).
+\end{itemize}
+Both lists always include the homepage.
+
+\subsubsection{URL normalization and eligibility filters}
+\label{app:url-normalization}
+
+\paragraph{Why normalization is necessary (intuition).}
+When we discover internal pages, we start from raw link strings (the \texttt{href} attributes) embedded in HTML. These raw strings are \emph{not} a clean set of unique pages: the same page can appear in many textual forms (relative vs. absolute links, with/without fragment anchors, with tracking query parameters, with stray whitespace/control characters). If we do not canonicalize them, we (i) waste crawl budget on duplicates, (ii) inflate page counts with tracking variants, and (iii) lose reproducibility because the discovered set becomes sensitive to irrelevant URL formatting differences. Our implementation therefore normalizes each candidate \texttt{href} into a single canonical absolute URL string before applying any eligibility checks.
+
+\paragraph{Definitions (URL components used by our filters).}
+We refer to standard URL components as parsed by \texttt{urllib.parse.urlparse}:
+\begin{itemize}
+    \item \textbf{Scheme:} the protocol prefix, e.g., \texttt{https} or \texttt{http}. This determines how a URL is fetched.
+    \item \textbf{Host / netloc:} the network location (domain, optionally with port), e.g., \texttt{example.github.io} or \texttt{example.github.io:443}.
+    \item \textbf{Origin:} the pair \texttt{(scheme, host)}. In the code, origin equality is checked via the tuple \texttt{(parsed.scheme, parsed.netloc)}.
+    \item \textbf{Path:} the hierarchical portion after the host, e.g., \texttt{/blog/post1/}.
+\end{itemize}
+
+\paragraph{Normalization (\texttt{\_normalize\_url}).}
+Given a base URL \texttt{base\_url} (the page we are currently crawling) and a raw \texttt{href} string extracted from HTML, \texttt{\_normalize\_url} produces either a canonical absolute URL string or \texttt{None} if the link is ineligible. The function performs the following steps \emph{in order}:
+
+\begin{enumerate}
+    \item \textbf{Reject empty/non-navigational link types.}
+    If \texttt{href} is missing/empty, we return \texttt{None}.
+    We also drop link types that do not represent a crawlable webpage.
+
+    \item \textbf{Sanitize the raw \texttt{href}.}
+    We remove leading/trailing whitespace and discard any trailing tokens after the first whitespace.
+
+    \item \textbf{Resolve relative links into absolute URLs.}
+
+    \item \textbf{Remove control characters.}
+    We remove ASCII control characters (ranges \texttt{0x00--0x1f} and \texttt{0x7f}) via the regex. This is a robustness measure: control characters can appear in scraped HTML and can break downstream parsing or equality checks.
+
+\end{enumerate}
+
+\noindent The output of \texttt{\_normalize\_url} is therefore a stable, absolute URL string where variation have been removed.
+
+\paragraph{Same-origin restriction.}
+After normalization, we restrict discovery to same-origin pages. In our setting, a ``site'' is defined by a single GitHub Pages base URL, and we want to discover \emph{internal} pages only. We implement same-origin filtering by parsing both the base URL and candidate URL and requiring:
+\[
+(\texttt{base.scheme}, \texttt{base.netloc}) = (\texttt{cand.scheme}, \texttt{cand.netloc}).
+\]
+ Concretely, this rejects:
+\begin{itemize}
+    \item External domains (e.g., \texttt{https://twitter.com/...}, 
+    
+    \texttt{https://cdn.example.com/...}),
+    \item Protocol changes that would move to a different origin (e.g., \texttt{http} vs. \texttt{https}),
+    \item Any links that leave the GitHub Pages host for that repository.
+\end{itemize}
+This restriction is essential for both correctness (we only measure CWV for pages that belong to the site under evaluation) and safety/budget (we do not crawl the open web).
+
+\paragraph{HTML-like path eligibility.}
+Even on the same origin, many URLs do not correspond to HTML documents (e.g., images, scripts, stylesheets, fonts, archives). CWV is defined for rendered documents; measuring CWV on binary/static assets is meaningless and can also fail. We therefore apply a fast path-based filter:
+\begin{itemize}
+    \item We extract the URL \emph{path} (the portion after the domain, e.g., \texttt{/blog/page.html}) and convert it to lowercase so extension checks (e.g., \texttt{.png}, \texttt{.js}, \texttt{.pdf}) are case-insensitive and consistent.
+
+    \item If the path ends with any of a fixed list of common non-HTML extensions, we mark it ineligible.
+\end{itemize}
+In particular, \texttt{\_looks\_like\_html\_path} rejects URLs ending in:
+\begin{itemize}
+    \item \textbf{Images:} \texttt{.png, .jpg, .jpeg, .webp, .gif, .svg}
+    \item \textbf{Web assets:} \texttt{.css, .js, .ico}
+    \item \textbf{Structured/text files:} \texttt{.json, .xml, .txt, .pdf}
+    \item \textbf{Archives:} \texttt{.zip, .tar, .gz}
+    \item \textbf{Audio/video:} \texttt{.mp4, .mp3, .avi, .mov, .wav, .flac}
+    \item \textbf{Fonts:} \texttt{.woff, .woff2, .ttf, .eot, .otf}
+\end{itemize}
+Any URL that does \emph{not} match these excluded suffixes is considered ``HTML-like'' and remains eligible for crawling and measurement.
+
+
+\subsubsection{Hierarchical discovery strategy}
+\label{app:hierarchical-discovery}
+
+This section describes how we construct a bounded set of internal webpages for each website. The objective is to (i) cover multiple page types beyond the homepage, while (ii) keeping runtime predictable and comparable across sites. The procedure is implemented in \texttt{discover\_urls} and follows a hierarchical strategy: we first attempt \emph{structured} sources of URLs (low variance, low cost), and only if those fail do we fall back to \emph{exploratory} crawling (higher variance, higher cost).
+
+
+\paragraph{Rationale for hierarchy.}
+A sitemap (when present) is a curated, publisher-provided index of site URLs. It tends to be (a) more complete than local link extraction for static sites, (b) less sensitive to crawl ordering, and (c) cheaper to parse than fetching and traversing many pages. Crawling is used as a fallback because it requires repeated network fetches and may miss pages that are not linked from the homepage.
+
+\paragraph{(1) Sitemap-based discovery (preferred).}
+We first attempt sitemap-based discovery using \texttt{try\_get\_sitemap\_urls}. Concretely:
+\begin{enumerate}
+    \item \textbf{Construct the sitemap URL.} We build \texttt{sitemap\_url} by joining the base URL and the literal path \texttt{/sitemap.xml}. This produces a canonical sitemap location under the same origin as the homepage.
+    \item \textbf{Fetch the sitemap.} We issue an HTTP GET request with a fixed user agent (\texttt{"webpage-discovery-crawler"}) and a short timeout (default \texttt{5}s). If the request fails (network error, timeout) or does not return status code 200, sitemap discovery yields an empty list.
+    \item \textbf{Extract URLs from \texttt{<loc>} entries.} The response body is decoded as UTF-8 (ignoring decoding errors) and scanned for \texttt{<loc>...</loc>} elements using a lightweight regular expression. Each extracted \texttt{loc} string is treated as a candidate URL.
+    \item \textbf{Apply eligibility filters.} Each candidate \texttt{loc} is retained only if (i) it is same-origin with the base URL (Section~\ref{app:url-normalization}), and (ii) it passes the HTML-like path filter (Section~\ref{app:url-normalization}). This avoids cross-site links and non-document resources.
+    \item \textbf{Deduplicate while preserving order.} The resulting list is deduplicated, which removes exact duplicates while retaining the first occurrence.
+\end{enumerate}
+If this stage returns at least one usable URL, discovery terminates and the method is recorded as \texttt{sitemap}.
+
+\paragraph{(2) HTML link crawling (fallback).}
+If sitemap parsing returns no usable URLs (sitemap missing, inaccessible, empty, or filtered out), we fall back to hyperlink crawling via \texttt{crawl\_site\_urls}, which wraps the \texttt{ParallelCrawler} implementation. The crawler performs a bounded breadth-first traversal starting from the homepage.
+
+\paragraph{Breadth-first traversal (what it means).}
+Breadth-first means we explore pages in layers: first the homepage (depth 0), then pages directly linked from it (depth 1), then pages linked from those pages (depth 2), etc. This tends to discover high-level navigation and common pages earlier than deep, highly specific pages. The maximum depth explored is capped by \texttt{max\_depth}.
+
+\paragraph{Hyperlink extraction.}
+For each fetched HTML document, we extract outbound links by searching the HTML for \texttt{href="..."} or \texttt{href='...'} patterns using \texttt{extract\_links\_from\_html}. This is a pragmatic, lightweight extraction method intended to identify the majority of standard anchor links without incurring the overhead of a full DOM parser.
+
+
+\paragraph{Homepage inclusion and post-processing.}
+Regardless of whether discovery used a sitemap or a crawl, we ensure the homepage URL is present in the output list.
+These steps make discovery deterministic with respect to the URL strings returned by a given run and cap the evaluation budget per site.
+
+\paragraph{Discussion.}
+Sitemap-first discovery reduces variance because it depends on a single fetch and a stable index provided by the site, whereas crawling depends on which pages are reachable from the homepage and on crawl ordering. Conversely, crawling improves coverage for sites that do not expose sitemaps or where sitemaps omit relevant pages. The hierarchical strategy therefore prioritizes low-cost, structured signals when available, and falls back to exploratory traversal only when necessary.
+
+\subsubsection{URL-template deduplication (pattern-based)}
+\label{app:url-template-dedup}
+
+\paragraph{Motivation (why template-level deduplication is necessary).}
+When discovering internal pages, a website often exposes many URLs that are \emph{distinct strings} but correspond to the \emph{same underlying page type}. This occurs in particular for:
+(i) paginated listings (e.g., \texttt{/posts/1}, \texttt{/posts/2}, \texttt{/posts/3}),
+(ii) content addressed by identifiers (e.g., \texttt{/post/123}, \texttt{/post/456}),
+or (iii) date-keyed routes (e.g., \texttt{/blog/2024/01/15/title}).
+If we measured CWV on all such URLs, we would spend most of the per-site budget evaluating many near-duplicates from a single route family, while under-sampling other page types (e.g., \texttt{/about}, \texttt{/docs}, \texttt{/pricing}). To avoid this bias and to use a bounded measurement budget more efficiently, we deduplicate URLs by \emph{structural pattern} rather than exact string equality, keeping one representative URL per inferred template.
+
+\paragraph{Template extraction (path segmentation and placeholder substitution).}
+Given a URL, we extract its \emph{path} component (the portion after the host and before any fragment) and split the path into ``segments'' using the \texttt{/} delimiter.\footnote{For example, \texttt{https://u.github.io/blog/2024/01/15/title} has the path \texttt{/blog/2024/01/15/title} and segments \{\texttt{blog}, \texttt{2024}, \texttt{01}, \texttt{15}, \texttt{title}\}.}
+Each segment is then examined independently and mapped to either itself (if it appears stable) or to a placeholder (if it appears high-variance). The mapping follows the exact rule order used in the implementation:
+\begin{itemize}
+    \item \textbf{Pure numeric segment} $\rightarrow$ \texttt{\{num\}}.  
+    A segment is replaced with \texttt{\{num\}} if it consists only of digits, such as \texttt{1}, \texttt{42}, or \texttt{2024}. This captures pagination indices and date components.
+    
+    \item \textbf{Long hex-like segment} ($\ge 8$ hex characters) $\rightarrow$ \texttt{\{hex\}}.  
+    A segment is replaced with \texttt{\{hex\}} if it matches a contiguous hexadecimal string of length at least 8 (case-insensitive), e.g., \texttt{a1b2c3d4} or \texttt{9F0A12BC34}. This is a common signature of hashes or opaque identifiers used in asset or content routing.
+
+    \item \textbf{UUID segment} $\rightarrow$ \texttt{\{uuid\}}.  
+    A segment is replaced with \texttt{\{uuid\}} if it matches the canonical format (8-4-4-4-12 hex chars), e.g., \texttt{550e8400-e29b-41d4-a716-446655440000}.
+
+    \item \textbf{Any segment containing a digit} $\rightarrow$ \texttt{\{id\}}.  
+    Finally, if a segment contains at least one digit but is not purely numeric and not captured by the previous hex/UUID rules, it is replaced with \texttt{\{id\}}. This captures mixed alphanumeric identifiers such as \texttt{post-123}, \texttt{item9}, or \texttt{v2}.
+\end{itemize}
+
+\noindent The resulting template is the canonical path formed by joining the transformed segments with \texttt{/} and prefixing with a leading slash.
+
+\paragraph{Deduplication rule (first occurrence per template).}
+After generating templates, we deduplicate the discovered URL list by retaining \emph{only the first URL encountered} for each unique template. Formally, we scan the discovered URLs in order; for each URL, we compute its template and keep the URL if and only if this template has not been seen before. Subsequent URLs that map to a previously seen template are discarded. This ``first occurrence'' policy is deterministic with respect to the input URL order and avoids random sampling effects.
+
+\paragraph{What is stored and why (transparency and downstream analysis).}
+To preserve transparency and enable ablations, we store:
+(i) \texttt{webpages}: the discovered URL list before template deduplication, and
+(ii) \texttt{deduped\_webpages}: the reduced list after template-level deduplication.
+This makes it possible to quantify how aggressively template deduplication compresses each site, and to re-run CWV measurement on either the full or reduced set depending on experimental needs.
+
+\paragraph{Scope and limitations (what this method does \emph{not} claim).}
+This procedure is intentionally lightweight and purely syntactic: it deduplicates by \emph{path structure} without fetching additional HTML for semantic equivalence checking. As a result, it may sometimes merge URLs that differ meaningfully but share a numeric/ID segment pattern, or fail to merge semantically identical pages whose paths do not exhibit obvious high-variance tokens. We adopt this approach because it is fast, deterministic, and sufficient to reduce the dominant duplication modes (pagination and ID routes) commonly observed in internal navigation.
+
+\subsubsection{Corpus-level analysis}
+\label{app:page-expansion-analysis}
+
+
+\begin{table}[t]
+\centering
+\small
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.12}
+\begin{tabular}{l r}
+\toprule
+\textbf{Statistic} & \textbf{Value} \\
+\midrule
+Total webpages found & 128{,}923 \\
+Total after template deduplication & 81{,}602 \\
+Total duplicates removed & 47{,}321 \\
+Overall deduplication rate & 36.70\% \\
+\midrule
+Avg webpages/site & 34.86 \\
+Median webpages/site & 3 \\
+Min / Max webpages/site & 1 / 150 \\
+Std dev webpages/site & 55.81 \\
+\midrule
+Avg dedup rate/site & 12.71\% \\
+Median dedup rate/site & 0.00\% \\
+Min / Max dedup rate/site & 0.00\% / 99.33\% \\
+\midrule
+Avg URL depth & 2.22 \\
+Median URL depth & 2 \\
+Max URL depth & 13 \\
+\bottomrule
+\end{tabular}
+\caption{\textbf{Webpage expansion summary (from pipeline logs).} Aggregate counts for internal page discovery and URL-template deduplication, plus per-site and URL-depth statistics.}
+\label{tab:page-expansion-summary}
+\end{table}
+
+\begin{table}[t]
+\centering
+\small
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.12}
+\begin{tabular}{r r r}
+\toprule
+\textbf{Depth} & \textbf{Count} & \textbf{\%} \\
+\midrule
+0 & 3{,}265  & 4.0 \\
+1 & 23{,}130 & 28.3 \\
+2 & 29{,}120 & 35.7 \\
+3 & 11{,}462 & 14.0 \\
+4 & 9{,}028  & 11.1 \\
+5 & 4{,}768  & 5.8 \\
+6 & 556      & 0.7 \\
+7 & 89       & 0.1 \\
+8 & 60       & 0.1 \\
+9 & 45       & 0.1 \\
+10 & 43      & 0.1 \\
+\bottomrule
+\end{tabular}
+\caption{\textbf{URL depth distribution (after discovery).} Depth is measured as the number of path segments in the normalized URL.}
+\label{tab:url-depth-distribution}
+\end{table}
+
+\paragraph{Interpretation.}
+Two properties are salient. First, internal-page availability is highly uneven across sites (median 3 vs.\ mean 34.86), which motivates strict global bounds (\texttt{max\_pages}, \texttt{max\_depth}) for fair runtime. Second, template deduplication removes a large fraction of pages overall (36.70\%), but with a median per-site rate of 0\%, indicating that redundancy is concentrated in a subset of sites (e.g., paginated blogs, index-heavy docs). This supports our design choice to deduplicate by URL structure: it preserves page-type diversity where redundancy exists while leaving most sites unchanged.
+
+
+
+
+
+
+\begin{table*}[t]
+\centering
+\small
+\renewcommand{\arraystretch}{1.25}
+\begin{tabularx}{\textwidth}{p{3.2cm} X}
+\hline
+\textbf{Tech Stack} & \textbf{Filtering Conditions (Heuristic Signals)} \\
+\hline
+
+Hexo &
+Repository contains a root-level \texttt{index.html} whose contents include either
+(i) a HTML meta tag of the form \texttt{<meta name="generator" content="Hexo">}, or
+(ii) textual indicators such as ``powered by hexo'', ``you hexo'' (Chinese text meaning ``by hexo''), or the keyword ``hexo''. \\
+
+Jekyll &
+Repository contains either a \texttt{Gemfile} or \texttt{\_config.yml}, and the file contents explicitly reference the string ``jekyll''. \\
+
+Hugo &
+Detected using either build-output or source-level signatures:
+(i) generated HTML or XML files contain Hugo generator metadata,
+(ii) presence of strong Hugo configuration files (\texttt{hugo.toml}, \texttt{hugo.yaml}, \texttt{hugo.yml}), or
+(iii) presence of generic configuration files together with Hugo-specific directory structure
+(e.g., \texttt{content/}, \texttt{layouts/}, \texttt{archetypes/}). \\
+
+React &
+A \texttt{package.json} file exists at the repository root or one level below, such that:
+(i) dependencies include both \texttt{react} and \texttt{react-dom},
+(ii) the repository does not declare \texttt{next} as a dependency, and
+(iii) either React SPA toolchain dependencies or bundler-related script commands are present. \\
+
+Next.js &
+Detected via either:
+(i) build artifacts consistent with Next.js output, or
+(ii) a \texttt{package.json} declaring \texttt{next} as a dependency. \\
+
+Vue &
+A \texttt{package.json} file exists declaring \texttt{vue} as a dependency or dev dependency, while explicitly excluding Nuxt-based projects. \\
+
+Express &
+A \texttt{package.json} file declares \texttt{express} as a dependency or dev dependency, optionally corroborated by JavaScript source files containing Express-specific usage patterns. \\
+
+Pelican &
+Detected via Python-based signals including configuration files, dependency declarations, or generated HTML containing Pelican generator metadata. \\
+
+Quarto &
+Repository contains Quarto configuration files or generated HTML files include Quarto-specific generator metadata or embedded assets. \\
+
+Flask &
+Detected via Python application signals including Flask application code or dependency declarations. \\
+
+Static HTML &
+Repository contains a root-level \texttt{index.html} file and does not contain any known static site generator configuration files or framework-specific directory structures. \\
+
+\hline
+\end{tabularx}
+\caption{Heuristic framework detection rules used to label repositories by underlying technology stack.}
+\label{tab:framework-detection-heuristics}
+\end{table*}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% REFER TO THE BELOW SUBSECTIONS IN THE EXPERIMENT SECTION WHEN TALKING ABOUT THE FINAL SPLIT OF 298 SAMPLES
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% \subsection{General Benchmark Statistics}
+% \subsubsection{Repo-level Statistics}
+% Packages 
+% CODESTATS \arnav{Ayush}
+% CODESIZE \arnav{Ayush}
+% \subsubsection{Website-level Statistics}
+% MEDIAANDOTHERFILESSIZE \arnav{Ayush}
+% WEBPAGES \arnav{Manaswi}
+
+
+\subsection{CWV Scores Extraction}
+\label{subsection:instrumentation}
+
+Core Web Vitals are measured using an automated browser-based harness built on Playwright with JavaScript instrumentation injected into the rendered page. The harness injects a \texttt{PerformanceObserver}-based script \emph{before} navigation via Playwright's \texttt{add\_init\_script} API, ensuring that all browser performance entries are captured from the very first paint.
+
+\paragraph{Injected instrumentation script.}
+Listing~\ref{lst:cwv-injection} shows the JavaScript snippet injected into every page load. It registers six observers that write into a shared \texttt{window.\_\_webVitals} object:
+
+\begin{itemize}
+    \item \textbf{LCP.} A \texttt{largest-contentful-paint} observer collects \emph{every} LCP candidate entry, recording element metadata (tag name, id, class, pixel size, render/load times, resource URL) and, for images, natural dimensions and \texttt{currentSrc}. The final LCP value is taken from the last reported entry.
+    \item \textbf{CLS.} A \texttt{layout-shift} observer implements the \emph{session window} algorithm specified by Google: shifts are grouped into sessions with a 1\,s inter-shift gap and a 5\,s session cap; the reported CLS is the maximum session value. Shifts caused by recent user input (\texttt{hadRecentInput}) are excluded.
+    \item \textbf{INP.} An \texttt{event} observer (with \texttt{durationThreshold: 16}) tracks all discrete interactions. A \texttt{Map} keyed by \texttt{interactionId} retains the longest-duration sub-event per interaction. INP is computed as the 75th-percentile duration across all recorded interactions.
+    \item \textbf{FID.} A \texttt{first-input} observer records the delay between \texttt{startTime} and \texttt{processingStart} of the first user input event.
+    \item \textbf{TTFB.} A \texttt{navigation} observer records \texttt{responseStart} from the navigation timing entry.
+    \item \textbf{FCP.} A \texttt{paint} observer captures the \texttt{first-contentful-paint} entry's \texttt{startTime}.
+\end{itemize}
+\label{sec:cwv-injection}
+
+\begin{lstlisting}[
+  caption={JavaScript injection script for CWV collection. Registered via \texttt{add\_init\_script} before page navigation.},
+  label={lst:cwv-injection},
+  language=JavaScript,
+  basicstyle=\ttfamily\scriptsize,
+  breaklines=true,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  xleftmargin=2em,
+  framexleftmargin=1.5em
+]
+window.__webVitals = {
+  lcp: null, cls: 0, fid: null, inp: null,
+  ttfb: null, fcp: null, interactions: [],
+  lcpElement: null, lcpElements: []
+};
+
+// LCP - collect ALL entries with element metadata
+try {
+  new PerformanceObserver((list) => {
+    const entries = list.getEntries();
+    for (const entry of entries) {
+      const el = entry.element;
+      const detail = {
+        tagName: el?.tagName || 'unknown',
+        id: (el?.id && el.id.trim()) ? el.id : null,
+        className: (el?.className &&
+          typeof el.className === 'string' &&
+          el.className.trim()) ? el.className.trim() : null,
+        size: entry.size ?? null,
+        renderTime: entry.renderTime ?? null,
+        loadTime: entry.loadTime ?? null,
+        startTime: entry.startTime ?? null,
+        url: (entry.url && entry.url.trim()) ? entry.url : null
+      };
+      if (el?.tagName === 'IMG') {
+        detail.naturalWidth = el.naturalWidth ?? null;
+        detail.naturalHeight = el.naturalHeight ?? null;
+        detail.currentSrc = el.currentSrc || null;
+      }
+      if (el?.tagName === 'VIDEO') {
+        detail.poster = (el.poster && el.poster.trim())
+          ? el.poster : null;
+      }
+      window.__webVitals.lcpElements.push(detail);
+    }
+    const last = entries[entries.length - 1];
+    window.__webVitals.lcp =
+      last.renderTime || last.loadTime;
+    window.__webVitals.lcpElement =
+      last.element?.tagName || 'unknown';
+  }).observe({
+    type: 'largest-contentful-paint', buffered: true
+  });
+} catch (e) {}
+
+// CLS - session window (1s gap, 5s cap)
+let clsValue = 0, sessionValue = 0, sessionEntries = [];
+try {
+  new PerformanceObserver((list) => {
+    for (const entry of list.getEntries()) {
+      if (!entry.hadRecentInput) {
+        const first = sessionEntries[0];
+        const last = sessionEntries[sessionEntries.length-1];
+        if (sessionValue &&
+            entry.startTime - last.startTime < 1000 &&
+            entry.startTime - first.startTime < 5000) {
+          sessionValue += entry.value;
+          sessionEntries.push(entry);
+        } else {
+          sessionValue = entry.value;
+          sessionEntries = [entry];
+        }
+        if (sessionValue > clsValue) {
+          clsValue = sessionValue;
+          window.__webVitals.cls = clsValue;
+        }
+      }
+    }
+  }).observe({ type: 'layout-shift', buffered: true });
+} catch (e) {}
+
+// INP - interaction map + P75
+const interactionMap = new Map();
+try {
+  new PerformanceObserver((list) => {
+    for (const entry of list.getEntries()) {
+      if (!entry.interactionId) continue;
+      const existing = interactionMap.get(entry.interactionId);
+      if (!existing || entry.duration > existing.duration)
+        interactionMap.set(entry.interactionId, entry);
+    }
+    const interactions = Array.from(interactionMap.values());
+    window.__webVitals.interactions =
+      interactions.map(e => e.duration);
+    if (interactions.length > 0) {
+      interactions.sort((a,b) => b.duration-a.duration);
+      const idx = Math.min(
+        Math.floor(interactions.length * 0.25),
+        interactions.length - 1);
+      window.__webVitals.inp =
+        interactions[idx].duration;
+    }
+  }).observe({
+    type: 'event', buffered: true,
+    durationThreshold: 16
+  });
+} catch (e) {}
+
+// TTFB
+try {
+  new PerformanceObserver((list) => {
+    const [nav] = list.getEntries();
+    window.__webVitals.ttfb = nav.responseStart;
+  }).observe({ type: 'navigation', buffered: true });
+} catch (e) {}
+
+// FCP
+try {
+  new PerformanceObserver((list) => {
+    for (const entry of list.getEntries()) {
+      if (entry.name === 'first-contentful-paint')
+        window.__webVitals.fcp = entry.startTime;
+    }
+  }).observe({ type: 'paint', buffered: true });
+} catch (e) {}
+\end{lstlisting}
+
+
+% \begin{lstlisting}{
+% [
+%   caption={JavaScript injection script for CWV collection. Registered via \texttt{add\_init\_script} before page navigation.},
+%   label={lst:cwv-injection},
+%   language=JavaScript,
+%   basicstyle=\ttfamily\scriptsize,
+%   breaklines=true,
+%   numbers=left,
+%   numberstyle=\tiny\color{gray},
+%   xleftmargin=2em,
+%   framexleftmargin=1.5em
+% ]
+% window.__webVitals = {
+%   lcp: null, cls: 0, fid: null, inp: null,
+%   ttfb: null, fcp: null, interactions: [],
+%   lcpElement: null, lcpElements: []
+% };
+
+% // LCP - collect ALL entries with element metadata
+% try {
+%   new PerformanceObserver((list) => {
+%     const entries = list.getEntries();
+%     for (const entry of entries) {
+%       const el = entry.element;
+%       const detail = {
+%         tagName: el?.tagName || 'unknown',
+%         id: (el?.id && el.id.trim()) ? el.id : null,
+%         className: (el?.className &&
+%           typeof el.className === 'string' &&
+%           el.className.trim()) ? el.className.trim() : null,
+%         size: entry.size ?? null,
+%         renderTime: entry.renderTime ?? null,
+%         loadTime: entry.loadTime ?? null,
+%         startTime: entry.startTime ?? null,
+%         url: (entry.url && entry.url.trim()) ? entry.url : null
+%       };
+%       if (el?.tagName === 'IMG') {
+%         detail.naturalWidth = el.naturalWidth ?? null;
+%         detail.naturalHeight = el.naturalHeight ?? null;
+%         detail.currentSrc = el.currentSrc || null;
+%       }
+%       if (el?.tagName === 'VIDEO') {
+%         detail.poster = (el.poster && el.poster.trim())
+%           ? el.poster : null;
+%       }
+%       window.__webVitals.lcpElements.push(detail);
+%     }
+%     const last = entries[entries.length - 1];
+%     window.__webVitals.lcp =
+%       last.renderTime || last.loadTime;
+%     window.__webVitals.lcpElement =
+%       last.element?.tagName || 'unknown';
+%   }).observe({
+%     type: 'largest-contentful-paint', buffered: true
+%   });
+% } catch (e) {}
+
+% // CLS - session window (1s gap, 5s cap)
+% let clsValue = 0, sessionValue = 0, sessionEntries = [];
+% try {
+%   new PerformanceObserver((list) => {
+%     for (const entry of list.getEntries()) {
+%       if (!entry.hadRecentInput) {
+%         const first = sessionEntries[0];
+%         const last = sessionEntries[sessionEntries.length-1];
+%         if (sessionValue &&
+%             entry.startTime - last.startTime < 1000 &&
+%             entry.startTime - first.startTime < 5000) {
+%           sessionValue += entry.value;
+%           sessionEntries.push(entry);
+%         } else {
+%           sessionValue = entry.value;
+%           sessionEntries = [entry];
+%         }
+%         if (sessionValue > clsValue) {
+%           clsValue = sessionValue;
+%           window.__webVitals.cls = clsValue;
+%         }
+%       }
+%     }
+%   }).observe({ type: 'layout-shift', buffered: true });
+% } catch (e) {}
+
+% // INP - interaction map + P75
+% const interactionMap = new Map();
+% try {
+%   new PerformanceObserver((list) => {
+%     for (const entry of list.getEntries()) {
+%       if (!entry.interactionId) continue;
+%       const existing = interactionMap.get(
+%         entry.interactionId);
+%       if (!existing ||
+%           entry.duration > existing.duration)
+%         interactionMap.set(entry.interactionId, entry);
+%     }
+%     const interactions =
+%       Array.from(interactionMap.values());
+%     window.__webVitals.interactions =
+%       interactions.map(e => e.duration);
+%     if (interactions.length > 0) {
+%       interactions.sort((a,b) => b.duration-a.duration);
+%       const idx = Math.min(
+%         Math.floor(interactions.length * 0.25),
+%         interactions.length - 1);
+%       window.__webVitals.inp =
+%         interactions[idx].duration;
+%     }
+%   }).observe({
+%     type: 'event', buffered: true,
+%     durationThreshold: 16
+%   });
+% } catch (e) {}
+
+% // TTFB
+% try {
+%   new PerformanceObserver((list) => {
+%     const [nav] = list.getEntries();
+%     window.__webVitals.ttfb = nav.responseStart;
+%   }).observe({ type: 'navigation', buffered: true });
+% } catch (e) {}
+
+% // FCP
+% try {
+%   new PerformanceObserver((list) => {
+%     for (const entry of list.getEntries()) {
+%       if (entry.name === 'first-contentful-paint')
+%         window.__webVitals.fcp = entry.startTime;
+%     }
+%   }).observe({ type: 'paint', buffered: true });
+% } catch (e) {}
+% \end{lstlisting}
+
+\paragraph{Measurement protocol and precautions.}
+Each measurement run proceeds through the following stages, with several precautions to ensure reproducibility:
+
+\begin{enumerate}
+    \item \textbf{Browser isolation.} Each run launches a fresh Playwright Chromium context with an empty cache, preventing cross-run state leakage.
+
+    \item \textbf{Device emulation via CDP.} Device profiles are applied through the Chrome DevTools Protocol. Desktop uses a 1500$\times$800 viewport with no CPU throttling, 10\,Mbps download, and 0\,ms latency. Mobile emulates a Pixel~6 (412$\times$915, 2.625$\times$ DPR) with 20$\times$ CPU throttling, 1\,Mbps download, and 150\,ms latency.
+
+    \item \textbf{Navigation and settle time.} The page is loaded with a 120\,s timeout using \texttt{domcontentloaded} as the wait strategy (more reliable than \texttt{networkidle} for diverse sites). After navigation completes, a fixed 5\,s settle period allows deferred resources and layout shifts to finalize before metric extraction.
+
+    \item \textbf{Interaction simulation with navigation blocking.} To elicit INP and FID measurements, the harness clicks the first visible interactive element (priority order: \texttt{button}, \texttt{a}, \texttt{input}, \texttt{[role="button"]}) and performs a scroll sequence (25\%, 50\%, back to top). Crucially, before interacting, the harness \emph{monkey-patches} navigation APIs (``location.assign", ``location.replace", ``window.open", ``history.pushState", and installs a capture-phase click/submit listener that calls ``preventDefault()" on anchors and forms. This prevents interactions from navigating away from the page, which would destroy the ``window.\_\_webVitals" state. All patches are restored after interaction.
+
+    \item \textbf{Outlier removal.} After collecting $N$ runs, an IQR-based filter removes measurements outside $[Q_1 - 1.5 \cdot \text{IQR},\; Q_3 + 1.5 \cdot \text{IQR}]$ independently for each metric. Aggregated statistics (median, mean, standard deviation, p75) are computed on the filtered set.
+
+    \item \textbf{Warmup run.} An initial warmup measurement is discarded to allow JIT compilation and DNS resolution to stabilize before the scored runs begin.
+\end{enumerate}
+
+\section {Detailed Subsampling procedure}
+Let $D$ denote the full CWV-Bench dataset.
+We define a set of sampled frameworks
+$$\mathcal{F}_s = \{\text{Static HTML}, \text{Hugo}, \text{Hexo}, \text{Jekyll}\}$$
+and a set of remaining frameworks $\mathcal{F}_r$, whose repositories are retained in full.
+
+For each repository $r \in D$, we compute
+\[
+\text{LOG\_SIZE}(r) = \log_{10}(\text{CODE\_SIZE}(r)).
+\]
+
+Within each sampled framework $f \in \mathcal{F}_s$, we compute framework-local percentiles
+$p_{50}, p_{70}, p_{90}$ over $\text{LOG\_SIZE}$.
+Repositories are assigned to one of three size bins:
+\[
+\begin{aligned}
+\text{B2}_{\text{medium}} &: [p_{50}, p_{70}), \\
+\text{B3}_{\text{large}} &: [p_{70}, p_{90}), \\
+\text{B4}_{\text{extreme}} &: [p_{90}, \infty).
+\end{aligned}
+\]
+
+Each framework’s sampling quota is split across these bins according to fixed ratios.
+Within each bin, repositories are selected using a greedy package-diversity algorithm.
+At each iteration, the repository maximizing the number of previously uncovered packages is selected until the bin’s quota is satisfied or no candidates remain.
+Any unused quota is propagated to the next larger bin.
+
+The sampled repositories from $\mathcal{F}_s$ are combined with all repositories from $\mathcal{F}_r$ to form the final dataset.
+
+\begin{algorithm}[t]
+\caption{Framework-Stratified Diversity-Aware Subsampling}
+\label{alg:subsampling}
+\KwIn{Dataset $D$ with framework labels, code size, and package sets}
+\KwOut{Final dataset $D_{\text{final}}$}
+
+Define sampled frameworks $\mathcal{F}_s$ and per-framework quotas\;
+Define remaining frameworks $\mathcal{F}_r$\;
+
+$D_{\text{final}} \leftarrow \emptyset$\;
+
+\ForEach{$f \in \mathcal{F}_s$}{
+    $D_f \leftarrow \{ r \in D \mid r.\text{FRAMEWORK} = f \}$\;
+    Compute $\text{LOG\_SIZE}(r) = \log_{10}(\text{CODE\_SIZE}(r))$ for all $r \in D_f$\;
+    Compute percentiles $p_{50}, p_{70}, p_{90}$ over $\text{LOG\_SIZE}$\;
+
+    Assign repositories to size bins:
+    $\text{B2}_{\text{medium}}, \text{B3}_{\text{large}}, \text{B4}_{\text{extreme}}$\;
+
+    Allocate bin quotas proportional to framework budget\;
+    $S_f \leftarrow \emptyset$\;
+    $\text{spill} \leftarrow 0$\;
+
+    \ForEach{size bin $b$ in increasing order}{
+        $q \leftarrow \text{quota}(b) + \text{spill}$\;
+        $C \leftarrow$ repositories in bin $b$\;
+        $S_b \leftarrow$ \textsc{GreedyPackageDiversity}$(C, q)$\;
+        $S_f \leftarrow S_f \cup S_b$\;
+        $\text{spill} \leftarrow q - |S_b|$\;
+    }
+
+    $D_{\text{final}} \leftarrow D_{\text{final}} \cup S_f$\;
+}
+
+$D_{\text{final}} \leftarrow D_{\text{final}} \cup \{ r \in D \mid r.\text{FRAMEWORK} \in \mathcal{F}_r \}$\;
+
+\Return{$D_{\text{final}}$}
+\end{algorithm}
+
+
+
+\section{Agent-Environment Evaluation Workflow}
+\label{subsection: agent evaluation}
+\subsection{Input Artifacts and Repository Setup}
+Each benchmark instance is defined by a CSV entry specifying a GitHub repository ID, a commit ID, framework metadata, an automatic hosting script, and baseline Core Web Vitals (CWV) measurements for both mobile and desktop. For each instance, the evaluation harness clones the repository and checks out the specified commit to ensure exact reproducibility.
+
+Hence, to guarantee deterministic evaluation and guard against upstream repository changes, each repository is represented internally as a versioned snapshot. All subsequent evaluation steps operate exclusively on this snapshot.
+
+After extraction, the repository contents are normalized into a single working directory. A fresh Git repository is initialized locally, and an initial ``baseline'' commit is created to enable clean diff-based patch extraction and rollback.
+
+\subsection{Agent-Driven Patch Generation}
+Patch generation is performed using a single autonomous agent invoked in two sequential phases: (1) a planning phase and (2) an execution phase. The two phases correspond to two separate invocations of the same agent template, differing only in workspace permissions and task prompts. This design enforces a clear separation between reasoning and action while keeping the agent identity, model, and capabilities fixed across phases. This framework allowed fairer benchmarking on a larger number of Agents.
+
+\paragraph{Phase 1: Planning.}
+In the planning phase, the repository is copied into a temporary workspace and recursively marked read-only using filesystem permissions (\texttt{chmod}). This constraint is enforced at the operating-system level and prevents the agent from modifying any source files, regardless of intent or instruction. The only writable artifact in this workspace is \texttt{plan.md}, which is created explicitly prior to execution.
+
+The agent is provided with baseline Core Web Vitals (CWV) measurements for \emph{both mobile and desktop devices}. These baselines include overall CWV scores as well as detailed attribution information (e.g., an option to look into lists of entries of CWV elements) for each device class. Importantly, no target metric, weighting, or optimization priority is specified. As a result, the agent is exposed simultaneously to two potentially competing performance profiles, with no explicit guidance on how to resolve trade-offs between them.
+
+This design intentionally creates an open-ended optimization setting. The agent must reason about how changes that benefit one device profile (e.g., reducing JavaScript execution for mobile) may negatively affect another (e.g., desktop rendering behavior), and must decide which interventions are globally beneficial, which are device-specific, and which should be avoided entirely. The absence of a single objective or dominant metric expands the agent’s decision space and shifts the task from narrow metric tuning to holistic performance reasoning.
+
+Using the read-only repository and the provided CWV context, the agent analyzes the codebase and produces a structured optimization plan in \texttt{plan.md}. The plan explicitly identifies performance issues across both device classes and proposes concrete code-level changes. Because source files cannot be modified during this phase, the planning output reflects the agent’s reasoning independent of execution artifacts.
+
+\paragraph{Phase 2: Execution.}
+In the execution phase, the same agent is invoked a second time on a writable copy of the repository. The \texttt{plan.md} file produced in Phase~1 is copied verbatim into the repository root. This handoff mechanism ensures that the second invocation is conditioned entirely on the agent’s own prior reasoning, rather than on additional external guidance.
+
+The agent is instructed to implement only the modifications specified in \texttt{plan.md}, while preserving all existing functionality, visible content, and layout semantics \ref{sec:prompts}. No further analysis or re-planning is requested in this phase; the agent’s task is strictly to translate the previously articulated plan into concrete code changes.
+
+After execution, \texttt{plan.md} is removed from the repository to prevent this planning artifact from being included in the final output. The resulting modifications are captured as a Git diff relative to the baseline commit.
+
+\subsection{Regression Checks and Failure Handling}
+\label{app:validation}
+\label{app:regression}
+\arnav{ayush verify}
+We enforce (i) GPT-4.1 screenshot similarity, (ii) DOM LSH match, (iii) content Jaccard similarity $\geq 0.97$, and (iv) no new console errors. In addition to performance measurement, the evaluation framework enforces a set of regression and safety checks to ensure that performance improvements do not come at the expense of correctness or content integrity. These checks include visual regression testing, DOM structure matching, and content matching to verify that visible output remains unchanged. \arnav{We treat any such failure as invalid. SOMESH} We provide prompts and thresholds in the released harness. Browser console logs are inspected for runtime errors, with particular emphasis on detecting missing resources such as HTTP 404 errors indicating broken asset references.
+
+% \section{Framework Identification Rules and Host Scripts}
+% \label{app:framework_rules}
+
+% \paragraph{Framework detection.}
+% We detect frameworks using file signatures (e.g., \texttt{\_config.yml} for Jekyll, \texttt{config.toml} or \texttt{hugo.toml} for Hugo, \texttt{\_config.yml} or \texttt{\_config.yaml} for Hexo, \texttt{package.json} scripts for React/Vue/Next, etc.) and lightweight regex patterns over repository metadata. Table~\ref{tab:framework_rules} lists the complete set of signatures used for bucket assignment.
+
+% \paragraph{Deployment scripts.}
+% For each framework bucket, we provide a deterministic host script that installs dependencies and serves the site locally. Scripts are designed to avoid dynamic toolchain inference at evaluation time, reducing stochasticity. Table~\ref{tab:host_scripts} enumerates framework-to-command mappings.
+
+% Suggested appendix tables (fill with your actual signatures and commands)
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{ll}
+\hline
+\textbf{Framework} & \textbf{Signature examples} \\
+\hline
+Jekyll & \texttt{\_config.yml}, \texttt{Gemfile}, \texttt{\_posts/} \\
+Hugo & \texttt{config.toml}, \texttt{hugo.yaml}, \texttt{content/} \\
+Hexo & \texttt{\_config.yml}, \texttt{themes/}, \texttt{source/} \\
+React & \texttt{package.json} + react deps, \texttt{src/} \\
+Next.js & \texttt{next.config.*}, \texttt{pages/} or \texttt{app/} \\
+Vue & \texttt{vue.config.*} or Vite config + vue deps \\
+Express & \texttt{server.js} / \texttt{app.js} + express deps \\
+\hline
+\end{tabular}
+\caption{Example framework detection signatures (complete list in the released code).}
+\label{tab:framework_rules}
+\end{table}
+
+\section{Infrastructure, Resource Limits, and Reproducibility}
+\label{app:infra}
+
+We run evaluations in a standardized compute environment (e.g., c5.4xlarge on Ubuntu 24.04; exact AMI and container versions are pinned). To bound evaluation cost and avoid pathological instances, we enforce maximum repository size (512MB) and maximum build time (10 minutes). All repositories are evaluated from pinned snapshots (repo id + commit id + zip archive). We release the Docker image and harness scripts required to reproduce deployments and CWV measurements.
+
+\label{app:hyperparams}
+
+\paragraph{Browser settings.}
+We use Playwright headless Chromium with navigation timeout 120s and \texttt{domcontentloaded} as the primary wait strategy. We apply a fixed settle time of 10 seconds before extracting metrics, to allow the respective CWV elements to load. Each run uses a fresh browser context to clear cache and isolate state.
+
+\paragraph{Device profiles.}
+We use two standardized profiles:
+(i) desktop with large viewport and minimal CPU throttling, and 
+(ii) mobile with Pixel-class viewport, CPU throttling, and slow network shaping.
+All numeric parameters (viewport, UA, CPU throttling, bandwidth, latency) are listed in the released configuration.
+
+\paragraph{Aggregation.}
+We perform 30 runs per (site, device) and remove outliers via an IQR rule. We aggregate LCP and INP using p75 and CLS using the median.
+
+
+\section{Agent Prompts, Logging Schema}
+\label{app:agent_scripts}
+\label{app:logging}
+
+We provide (i) the two-phase diagnosis/apply prompt templates and (ii) an example log outline of the Planning Agent containing the creation of the plan.md, (iii) patches, deploy logs, and measurement artifacts.
+\begin{table*}[t]
+\centering
+\caption{Comparison of selected software engineering and front-end benchmarks }
+\label{tab:benchmark_comparison}
+\renewcommand{\arraystretch}{1.15}
+\setlength{\tabcolsep}{6pt}
+
+\begin{tabular}{p{3.2cm}ccccp{5.8cm}}
+\toprule
+\textbf{Benchmark} &
+\textbf{User-Impact} &
+\textbf{Contam.} &
+\textbf{Repo} &
+\textbf{Auto} &
+\textbf{Domain} \\
+\midrule
+
+SWE-Lancer & \cmark & \xmark & \cmark & \xmark & TS, JS \\
+SWE-bench Verified & \xmark & \xmark & \cmark & \xmark & Py \\
+SWE-Bench Pro & \xmark & \cmark & \cmark & \xmark & Py, JS, TS, Go \\
+Design2Code & \xmark & \xmark & \xmark & \pmark & HTML, CSS, JS \\
+FrontendBench & \xmark & \xmark & \xmark & \pmark & HTML, CSS, JS \\
+WebCode2M & \xmark & \xmark & \xmark & \pmark & HTML, CSS, JS \\
+EnConda-Bench & \xmark & \xmark & \cmark & \cmark & Shell, Py \\
+SWE-eval & \xmark & \xmark & \cmark & \cmark & Shell, Py \\
+Interaction2Code & \cmark & \cmark & \xmark & \pmark & HTML, CSS, JS \\
+\textbf{SWE-Experience-Bench*} & \textbf{\cmark} & \textbf{\cmark} & \textbf{\cmark} & \textbf{\cmark} & \textbf{15 languages, including JS, Py, TS, PHP, Java, Go, Ruby, Rust, C, and C++} \\
+\bottomrule
+\end{tabular}
+\end{table*}
+\subsection{Agent Prompts}
+\label{sec:prompts}
+\begin{tcblisting}{
+  title=Planning Agent Prompt,
+  colback=gray!10,
+  colframe=black,
+  coltitle=white,
+  colbacktitle=black,
+  fonttitle=\bfseries,
+  breakable,
+  enhanced,
+  boxed title style={
+    sharp corners,
+    boxrule=0pt
+  },
+  listing only
+}
+
+You are a Core Web Vitals optimization expert analyzing a $FRAMEWORK web application.
+
+## Task: Optimize LCP, CLS, and INP for mobile and desktop
+
+### Current Baseline Metrics:
+
+**Mobile:**
+- LCP (Largest Contentful Paint): ${LCP_MOBILE_MEDIAN}ms - Rating: ${LCP_MOBILE_RATING}
+- CLS (Cumulative Layout Shift): ${CLS_MOBILE_MEDIAN} - Rating: ${CLS_MOBILE_RATING}
+- INP (Interaction to Next Paint): ${INP_MOBILE_MEDIAN}ms - Rating: ${INP_MOBILE_RATING}
+
+**Desktop:**
+- LCP (Largest Contentful Paint): ${LCP_DESKTOP_MEDIAN}ms - Rating: ${LCP_DESKTOP_RATING}
+- CLS (Cumulative Layout Shift): ${CLS_DESKTOP_MEDIAN} - Rating: ${CLS_DESKTOP_RATING}
+- INP (Interaction to Next Paint): ${INP_DESKTOP_MEDIAN}ms - Rating: ${INP_DESKTOP_RATING}
+
+### Your Task:  
+Analyze the codebase and create a detailed optimization plan to improve these Core Web Vitals metrics:
+- **LCP**: Optimize loading of main content elements
+- **CLS**: Prevent unexpected layout shifts during page load
+- **INP**: Improve responsiveness to user interactions
+
+### Data Available:
+- repo/init_cwv.json: Contains detailed LCP element entries showing which elements are causing slow LCP
+- repo/: Complete source code for the application
+
+### Output Instructions:
+- Read repo/init_cwv.json to understand which specific elements are causing LCP issues
+- Analyze the codebase to identify optimization opportunities
+- WRITE the plan to 'plan.md' in the current directory
+- Prioritize metrics with "Poor" or "Needs Improvement" ratings
+- Be specific about file paths and code changes
+- Use valid Markdown formatting
+- DO NOT modify any repository files (init_cwv.json or source code)
+- DO NOT create additional files or output to chat
+
+\end{tcblisting}
+
+\begin{tcblisting}{
+  title=Execution Agent Prompt,
+  colback=gray!10,
+  colframe=black,
+  coltitle=white,
+  colbacktitle=black,
+  fonttitle=\bfseries,
+  breakable,
+  enhanced,
+  boxed title style={
+    sharp corners,
+    boxrule=0pt
+  },
+  listing only
+}
+
+You are implementing Core Web Vitals optimizations for a ${FRAMEWORK} website.
+
+### Current Baseline Metrics:
+
+**Mobile:**
+- LCP (Largest Contentful Paint): ${LCP_MOBILE_MEDIAN}ms - Rating: ${LCP_MOBILE_RATING}
+- CLS (Cumulative Layout Shift): ${CLS_MOBILE_MEDIAN} - Rating: ${CLS_MOBILE_RATING}
+- INP (Interaction to Next Paint): ${INP_MOBILE_MEDIAN}ms - Rating: ${INP_MOBILE_RATING}
+
+**Desktop:**
+- LCP (Largest Contentful Paint): ${LCP_DESKTOP_MEDIAN}ms - Rating: ${LCP_DESKTOP_RATING}
+- CLS (Cumulative Layout Shift): ${CLS_DESKTOP_MEDIAN} - Rating: ${CLS_DESKTOP_RATING}
+- INP (Interaction to Next Paint): ${INP_DESKTOP_MEDIAN}ms - Rating: ${INP_DESKTOP_RATING}
+
+### The Plan:
+${PLAN_CONTENT}
+
+### Your Task:
+Execute the code modifications specified in the plan above to optimize CWV metrics (LCP, CLS, INP) for both mobile and desktop.
+
+### ${FRAMEWORK}-Specific Considerations:
+- Work within the existing ${FRAMEWORK} architecture and patterns
+- Preserve all existing functionality and visible content
+
+### Implementation Constraints:
+- Follow the plan and implement the changes
+- You can read files to get better understanding of the codebase
+- Do NOT edit init_cwv.json or configuration files
+- Do NOT remove pages or alter visible content/layout
+- Apply optimizations that work for both mobile and desktop viewports
+
+Focus on executing the concrete file modifications from the plan. Skip any analysis or documentation steps.
+
+
+
+\end{tcblisting}
+
+\subsubsection{Logging Schema}
+
+\begin{tcblisting}{
+  title=Agent Logging,
+  colback=gray!10,
+  colframe=black,
+  coltitle=white,
+  colbacktitle=black,
+  fonttitle=\bfseries,
+  breakable,
+  enhanced,
+  boxed title style={
+    sharp corners,
+    boxrule=0pt
+  },
+  listing only
+}
+
+[agent] === plan.md content ===
+## Performance Issues Identified
+
+- Mobile LCP: mean 598.4ms, median 592.0ms, p75 618.0ms (Good); LCP element is `H1` (size ~13KB) per `repo/init_cwv.json` `lcp_entries_mobile`
+- Desktop LCP: mean 60.8ms, median 64.0ms, p75 64.0ms (Good); LCP element is `H1.lg-heading` (~101KB) per `lcp_entries_desktop`
+- Mobile INP: mean 27.2ms, p75 32.0ms (Good)
+- Desktop INP: mean/p75 16.0ms (Good)
+- Mobile CLS: 0.0 (Good) - but several patterns risk future shifts
+- Desktop CLS: ~0.00026 (Good)
+- Mobile TTFB: mean 1.98s (Good but high for static content)
+- Desktop TTFB: mean 1.84s (Good but can be improved)
+
+## Targeted Improvements and Exact Suggestions
+
+### Largest Contentful Paint (LCP)
+### Cumulative Layout Shift (CLS)
+### Interaction to Next Paint (INP)
+### TTFB and Delivery
+### Build-time Optimizations
+## Expected Impact (Mobile p75 goals)
+- LCP: 
+- INP: 
+- CLS: 
+- TTFB:
+## Verification Steps
+## File Change Summary (proposed)
+Note: This plan does not modify repository files now; it lists precise changes to implement.
+[agent] === end plan.md ===
+[agent] Done
+
+\end{tcblisting}
+
+
+
+
+
+
+
+
+
+
+% \section{Internal Page Discovery and Deduplication Details}
+% \label{app:page_dedup}
+
+% We provide full details of sitemap parsing, bounded crawl, URL normalization rules, template canonicalization, and DOM-level deduplication, along with ablations on page caps and depth bounds.
+
+% ============================================================
+% Appendix: Internal Page Expansion (Sitemap/Crawl + Dedup)
+% ============================================================

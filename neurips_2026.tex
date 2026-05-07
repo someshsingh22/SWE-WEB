@@ -1,0 +1,191 @@
+\documentclass{article}
+
+% "preprint" option for arXiv / working preprint submissions
+\usepackage[preprint]{neurips_2026}
+
+% to avoid loading the natbib package, add option nonatbib:
+%    \usepackage[nonatbib]{neurips_2026}
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsmath}        % math environments and \text{}
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{xcolor}         % colors
+
+% Additional packages carried over from the ACM version
+\usepackage{caption}
+\usepackage{listings}
+\usepackage{tabularx}
+\usepackage{tcolorbox}
+\usepackage{adjustbox}
+\usepackage[ruled,vlined]{algorithm2e}
+\usepackage{placeins}
+\usepackage{booktabs}
+\usepackage{pifont}
+
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage[table]{xcolor}
+\usepackage{amssymb}
+
+\newcommand{\cmark}{\textcolor{green!60!black}{$\checkmark$}}
+\newcommand{\xmark}{\textcolor{red!70!black}{\texttimes}}
+\newcommand{\pmark}{\textcolor{orange!80!black}{Partial}}
+
+% ACM \Description{} is not defined in NeurIPS; suppress it safely
+\providecommand{\Description}[1]{}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  columns=fullflexible
+}
+
+\lstdefinelanguage{css}{
+  sensitive=true,
+  morecomment=[s]{/*}{*/},
+  morestring=[b]",
+  morestring=[b]',
+  alsoletter={-},
+  morekeywords={
+    align-items,animation,background,background-color,border,bottom,color,
+    display,ease,flex,font-family,font-size,font-weight,gap,height,
+    justify-content,left,margin,max-width,min-height,none,opacity,overflow,
+    padding,pointer-events,position,relative,right,top,transition,width,z-index
+  }
+}
+
+\lstdefinelanguage{JavaScript}{
+  morekeywords={
+    async,await,break,case,catch,class,const,continue,default,delete,do,
+    else,export,extends,false,finally,for,from,function,if,import,in,
+    instanceof,let,new,null,of,return,static,super,switch,this,throw,true,
+    try,typeof,var,void,while,yield
+  },
+  sensitive=true,
+  morecomment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  morestring=[b]",
+  morestring=[b]',
+  morestring=[b]`
+}
+
+\tcbuselibrary{listings,breakable,skins}
+
+% -----------------------------------------------------------------------
+% Collaborative annotation macros (working-preprint comments)
+% -----------------------------------------------------------------------
+\newcommand{\somesh}[1]{\textcolor{red}{[\textbf{Somesh}:~#1]}}
+\newcommand{\arnav}[1]{\textcolor{blue}{[\textbf{Arnav}:~#1]}}
+\newcommand{\ayush}[1]{\textcolor{orange}{[\textbf{Ayush}:~#1]}}
+\newcommand{\manaswi}[1]{\textcolor{violet}{[\textbf{Manaswi}:~#1]}}
+\newcommand{\todo}[1]{\textcolor{magenta}{[\textbf{TODO}:~#1]}}
+
+% Benchmark name shorthand
+\newcommand{\OurBench}{SWE-WEB }
+
+% -----------------------------------------------------------------------
+\title{SWE-WEB: Benchmarking Agent's capability to Optimize Real World Web Experiences}
+
+% The \author macro works with any number of authors. There are two
+% commands used to separate the names and addresses of multiple authors:
+% \And and \AND.  Using \And between authors leaves it to LaTeX to
+% determine where to break the lines; using \AND forces a line break.
+\author{%
+  Author 1\thanks{Use footnote for providing further information about
+    author (webpage, alternative address)---\emph{not} for acknowledging
+    funding agencies.} \\
+  Department / Institution \\
+  City, Country \\
+  \texttt{email@example.com} \\
+  \And
+  Author 2 \\
+  Department / Institution \\
+  City, Country \\
+  \texttt{email@example.com} \\
+  \And
+  Author 3 \\
+  Department / Institution \\
+  City, Country \\
+  \texttt{email@example.com} \\
+  \And
+  Author 4 \\
+  Department / Institution \\
+  City, Country \\
+  \texttt{email@example.com} \\
+}
+
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Optimizing real-world website experience requires improving user-facing
+performance under complex, multi-objective constraints, framing software
+engineering as an open-ended optimization problem. Existing LLM coding
+benchmarks, however, rely on unit tests and curated issues from public
+repositories, limiting their ability to assess long-horizon planning,
+resistance to data contamination, and real-world impact. We introduce
+\OurBench, a benchmark and execution environment that evaluates autonomous
+coding agents on improving Core Web Vitals (CWVs)---loading speed, visual
+stability, and responsiveness---for real, deployed websites.
+\OurBench comprises 2{,}741 GitHub Pages repositories spanning 11 modern
+web frameworks (including React, Vue, Next.js, Hugo, and Jekyll) and
+73{,}000 deduplicated webpages, each paired with its complete source code
+and Docker image. We reconstruct deterministic build and deployment
+pipelines, integrate a controlled CWV measurement harness, and enforce
+strict regression checks to prevent reward hacking. Because CWVs are
+measured dynamically from deployed pages rather than matched against
+reference patches, the benchmark inherently resists data contamination and
+can be continuously refreshed with new repositories. We evaluate six
+configurations of four frontier coding agents (OpenCode, Codex, Aider,
+Claude-Code) paired with four LLMs (GPT-5, GPT-5.1\,Codex, GPT-4.1,
+Claude-Sonnet\,4.5) on a stratified subset of 300 websites under a
+structured plan-then-implement protocol. The best configuration (OpenCode
++ GPT-5.1\,Codex) achieves Pareto CWV improvement on 57\% of sites, while
+weaker configurations degrade more sites than they help, with degradation
+rates reaching 90\%. These findings position CWV optimization as a
+frontier challenge that exposes fundamental gaps in current agents' ability
+to perform goal-directed, multi-objective software engineering, and
+demonstrate the value of impact-aligned, execution-based evaluation. We
+will release the complete benchmark, evaluation harness, and agent
+protocols.
+\end{abstract}
+
+
+\input{pages/intro}
+\input{pages/method}
+\input{pages/experiments}
+\input{pages/results_discussions}
+\input{pages/conclusion}
+\input{pages/related_work}
+\input{pages/limitation}
+
+
+\bibliographystyle{plainnat}
+\bibliography{sample-base}
+
+
+%%
+%% NeurIPS Paper Checklist (required; does not count toward page limit)
+\input{checklist}
+
+
+%%
+%% Appendix
+\appendix
+\include{pages/appendix/visual_regression}
+
+\include{pages/appendix/cwv_measurement}
+\include{pages/appendix/details}
+\include{pages/appendix/prompts}
+\include{pages/appendix/gh_filtering}
+\include{pages/appendix/agent_analysis}
+
+\end{document}

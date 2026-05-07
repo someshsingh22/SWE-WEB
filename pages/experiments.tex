@@ -1,0 +1,35 @@
+\section{Experimental Setup}
+\label{sec:experiments}
+We evaluate six configurations spanning four autonomous coding agents and four frontier language models, designed to enable controlled ablation of the agent scaffold and the underlying model independently.
+
+\paragraph{Agents}
+We select four prominent coding agent frameworks that represent the current landscape of autonomous software engineering tools: \textbf{OpenCode}~\cite{opencode_ai}, \textbf{Aider}~\cite{aider_chat}, \textbf{Codex}~\cite{chen2021codex}, and \textbf{Claude-Code}~\cite{anthropic_claude_code}.
+Each framework provides a distinct combination of scaffolding capabilities including tool integration, file-system access, and context management while many other commercial and open-source agents derive from or build upon these architectures. To ensure fair comparison, all agents are evaluated under the same two-phase protocol described in Appendix~\ref{subsection: agent evaluation}: a read-only \emph{planning} phase in which the agent produces a structured optimization plan, followed by a writable \emph{execution} phase in which the agent implements only the changes specified in its own plan.
+
+\paragraph{Language models}
+We pair each agent with a frontier coding LLM. Codex and Claude-Code are proprietary systems tuned to their respective model families (OpenAI and Anthropic), so they are each evaluated with their native model: Codex with \textbf{GPT-5}~\cite{openai_gpt5_page} and Claude~Code with \textbf{Claude~Sonnet\,4.5}~\cite{anthropic_claude_sonnet_45}.
+To enable a clean LLM ablation at fixed agent scaffold, we use \textbf{OpenCode}, an open source coding agent which supports multiple LLMs, and evaluate it with three models: \textbf{GPT-5}, \textbf{GPT-5.1\,Codex}, \textbf{Claude-Sonnet-4.5} and \textbf{GPT-4.1}.
+Aider is similarly evaluated with GPT-5, completing a GPT-5 triad (OpenCode, Aider, Codex) that isolates the agent scaffold at fixed model capacity.
+% Table~\ref{tab:agent-configs} summarizes the six configurations.
+All agents receive identical inputs repository snapshot, deterministic host script, baseline CWVs for both device profiles, and LCP/CLS/INP attribution signals under reasoning and output token budget constraints detailed in \S\ref{sec:agent_protocol}.
+
+\paragraph{Evaluation subset.}
+From the full benchmark (\S\ref{sec:bench_sources}), we evaluate on a stratified subset of 300 websites spanning all 11 frameworks, selected to cover a range of baseline CWV profiles: sites with at least one Poor metric (requiring improvement), sites in the Needs Improvement range, and sites where all metrics are already Good (requiring restraint).
+Each website is measured over 30 independent runs per device profile (mobile and desktop) as described in \S\ref{sec:cwv-evaluation}, yielding six metrics per configuration: LCP, INP, and CLS on each of mobile and desktop.
+We aggregate per-site scores using the median across runs to obtain robust baselines and post-agent estimates.
+
+
+\subsection{Metrics}
+
+\subsubsection{Site Health}
+\label{sec:site-health}
+Comparing agents across six metrics on different scales LCP in milliseconds (range: 20-10{,}000+), INP in milliseconds (range: 0-2{,}000+), and CLS as a unitless ratio (range: 0-2+). We define a \emph{Site Health Score} that maps each metric to a common $[0,100]$ scale following the equation \ref{eq:health}:
+\begin{equation}
+\label{eq:health}
+    H(v, m) = \begin{cases}
+        100 & \text{if } v \leq G_m \\[3pt]
+        100 - 50 \cdot \frac{v - G_m}{N_m - G_m} & \text{if } G_m < v \leq N_m \\[3pt]
+        \max\!\Bigl(0,\; 50\cdot(1 - \frac{v - N_m}{N_m})\Bigr) & \text{if } v > N_m
+    \end{cases}
+\end{equation}
+where $G_m$ and $N_m$ are the Good and Needs~Improvement thresholds for metric $m$ (e.g., $G_{\text{LCP}}=2500$\,ms, $N_{\text{LCP}}=4000$\,ms), the ranges and thresholds are consistent with the performance scoring tiers adopted by Adobe \footnote{\url{https://experienceleague.adobe.com/en/docs/experience-manager-learn/cloud-service/expert-resources/cloud-5/season-3/cloud5-lighthouse-score-optimization-part1}}. A score of 100 indicates the metric is at or below the Good threshold; 50 corresponds to the Needs~Improvement boundary; 0 indicates severe degradation. We report the \emph{Health Delta} the change in the mean of $H(v,m)$ across all six metrics from baseline to post-agent.

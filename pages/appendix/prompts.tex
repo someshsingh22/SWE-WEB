@@ -1,0 +1,613 @@
+% \section{Agent Prompts, Runner Scripts, and Logging Schema}
+% \label{app:agent_scripts}
+% \label{app:logging}
+
+% We provide (i) baseline task prompts, (ii) the two-phase diagnosis/apply prompt templates, (iii) reference runner scripts (e.g., a Claude Code wrapper), and (iv) the logging schema used to record conversations, patches, deploy logs, and measurement artifacts.
+
+% We provide (i) baseline task prompts, (ii) the two-phase diagnosis/apply prompt templates, (iii) reference runner scripts (e.g., a Claude Code wrapper), and (iv) the logging schema used to record conversations, patches, deploy logs, and measurement 
+% artifacts.
+
+% \section{Agent Prompts}
+% \label{sec:prompts}
+% \begin{tcblisting}{
+%   title=Planning Agent Prompt,
+%   colback=gray!10,
+%   colframe=black,
+%   coltitle=white,
+%   colbacktitle=black,
+%   fonttitle=\bfseries,
+%   breakable,
+%   enhanced,
+%   boxed title style={
+%     sharp corners,
+%     boxrule=0pt
+%   },
+%   listing only
+% }
+
+% You are a Core Web Vitals optimization expert analyzing a $FRAMEWORK web application.
+
+% ## Task: Optimize LCP, CLS, and INP for mobile and desktop
+
+% ### Current Baseline Metrics:
+
+% **Mobile:**
+% - LCP (Largest Contentful Paint): ${LCP_MOBILE_MEDIAN}ms - Rating: ${LCP_MOBILE_RATING}
+% - CLS (Cumulative Layout Shift): ${CLS_MOBILE_MEDIAN} - Rating: ${CLS_MOBILE_RATING}
+% - INP (Interaction to Next Paint): ${INP_MOBILE_MEDIAN}ms - Rating: ${INP_MOBILE_RATING}
+
+% **Desktop:**
+% - LCP (Largest Contentful Paint): ${LCP_DESKTOP_MEDIAN}ms - Rating: ${LCP_DESKTOP_RATING}
+% - CLS (Cumulative Layout Shift): ${CLS_DESKTOP_MEDIAN} - Rating: ${CLS_DESKTOP_RATING}
+% - INP (Interaction to Next Paint): ${INP_DESKTOP_MEDIAN}ms - Rating: ${INP_DESKTOP_RATING}
+
+% ### Your Task:  
+% Analyze the codebase and create a detailed optimization plan to improve these Core Web Vitals metrics:
+% - **LCP**: Optimize loading of main content elements
+% - **CLS**: Prevent unexpected layout shifts during page load
+% - **INP**: Improve responsiveness to user interactions
+
+% ### Data Available:
+% - repo/init_cwv.json: Contains detailed LCP element entries showing which elements are causing slow LCP
+% - repo/: Complete source code for the application
+
+% ### Output Instructions:
+% - Read repo/init_cwv.json to understand which specific elements are causing LCP issues
+% - Analyze the codebase to identify optimization opportunities
+% - WRITE the plan to 'plan.md' in the current directory
+% - Prioritize metrics with "Poor" or "Needs Improvement" ratings
+% - Be specific about file paths and code changes
+% - Use valid Markdown formatting
+% - DO NOT modify any repository files (init_cwv.json or source code)
+% - DO NOT create additional files or output to chat
+
+% \end{tcblisting}
+
+
+% \begin{tcblisting}{
+%   title=Execution Agent Prompt,
+%   colback=gray!10,
+%   colframe=black,
+%   coltitle=white,
+%   colbacktitle=black,
+%   fonttitle=\bfseries,
+%   breakable,
+%   enhanced,
+%   boxed title style={
+%     sharp corners,
+%     boxrule=0pt
+%   },
+%   listing only
+% }
+
+% You are implementing Core Web Vitals optimizations for a ${FRAMEWORK} website.
+
+% ### Current Baseline Metrics:
+
+% **Mobile:**
+% - LCP (Largest Contentful Paint): ${LCP_MOBILE_MEDIAN}ms - Rating: ${LCP_MOBILE_RATING}
+% - CLS (Cumulative Layout Shift): ${CLS_MOBILE_MEDIAN} - Rating: ${CLS_MOBILE_RATING}
+% - INP (Interaction to Next Paint): ${INP_MOBILE_MEDIAN}ms - Rating: ${INP_MOBILE_RATING}
+
+% **Desktop:**
+% - LCP (Largest Contentful Paint): ${LCP_DESKTOP_MEDIAN}ms - Rating: ${LCP_DESKTOP_RATING}
+% - CLS (Cumulative Layout Shift): ${CLS_DESKTOP_MEDIAN} - Rating: ${CLS_DESKTOP_RATING}
+% - INP (Interaction to Next Paint): ${INP_DESKTOP_MEDIAN}ms - Rating: ${INP_DESKTOP_RATING}
+
+% ### The Plan:
+% ${PLAN_CONTENT}
+
+% ### Your Task:
+% Execute the code modifications specified in the plan above to optimize CWV metrics (LCP, CLS, INP) for both mobile and desktop.
+
+% ### ${FRAMEWORK}-Specific Considerations:
+% - Work within the existing ${FRAMEWORK} architecture and patterns
+% - Preserve all existing functionality and visible content
+
+% ### Implementation Constraints:
+% - Follow the plan and implement the changes
+% - You can read files to get better understanding of the codebase
+% - Do NOT edit init_cwv.json or configuration files
+% - Do NOT remove pages or alter visible content/layout
+% - Apply optimizations that work for both mobile and desktop viewports
+
+% Focus on executing the concrete file modifications from the plan. Skip any analysis or documentation steps.
+
+
+% \end{tcblisting}
+
+
+
+
+
+
+
+% % \section{Internal Page Discovery and Deduplication Details}
+% % \label{app:page_dedup}
+
+% % We provide full details of sitemap parsing, bounded crawl, URL normalization rules, template canonicalization, and DOM-level deduplication, along with ablations on page caps and depth bounds.
+
+% % ============================================================
+% % Appendix: Internal Page Expansion (Sitemap/Crawl + Dedup)
+% % ============================================================
+\section{Framework Host Scripts}
+\label{app:host-scripts}
+
+We provide the complete set of deterministic host scripts used to deploy each framework locally during evaluation. Each script accepts a repository directory and log path, installs dependencies where necessary, and launches a local server on a fixed port. If no recognized entrypoint is found, the script exits with a non-zero status and the instance is excluded from evaluation.
+
+\begin{lstlisting}[
+  caption={\texttt{host\_static\_html.sh} -- Static HTML deployment.},
+  label={lst:host-static},
+  language=bash,
+  basicstyle=\ttfamily\scriptsize,
+  breaklines=true,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  xleftmargin=2em,
+  framexleftmargin=1.5em
+]
+#!/usr/bin/env bash
+set -euo pipefail
+PORT="${PORT:-4000}"
+REPO_DIR="${1:-.}"
+LOG="${2:-/tmp/host_static_html.log}"
+cd "$REPO_DIR"
+
+if [[ -f index.html ]]; then
+  echo "[static] Serving static HTML on port $PORT" \
+    | tee -a "$LOG"
+  exec python3 -m http.server "$PORT" \
+    >>"$LOG" 2>&1
+fi
+
+echo "[static] ERROR: No index.html found" \
+  | tee -a "$LOG"
+exit 2
+\end{lstlisting}
+
+\begin{lstlisting}[
+  caption={\texttt{host\_jekyll.sh} -- Jekyll deployment.},
+  label={lst:host-jekyll},
+  language=bash,
+  basicstyle=\ttfamily\scriptsize,
+  breaklines=true,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  xleftmargin=2em,
+  framexleftmargin=1.5em
+]
+#!/usr/bin/env bash
+set -euo pipefail
+PORT="${PORT:-4000}"
+REPO_DIR="${1:-.}"
+LOG="${2:-/tmp/host_jekyll.log}"
+cd "$REPO_DIR"
+
+if [[ -f Gemfile ]]; then
+  bundle install
+  exec bundle exec jekyll serve \
+    --host 0.0.0.0 --port "$PORT" >>"$LOG" 2>&1
+fi
+
+if [[ -f _config.yml ]]; then
+  exec jekyll serve \
+    --host 0.0.0.0 --port "$PORT" >>"$LOG" 2>&1
+fi
+
+if [[ -f index.html ]]; then
+  exec python3 -m http.server "$PORT" >>"$LOG" 2>&1
+fi
+
+echo "[jekyll] ERROR: No recognized entrypoint" \
+  | tee -a "$LOG"
+exit 2
+\end{lstlisting}
+
+\begin{lstlisting}[
+  caption={\texttt{host\_hugo.sh} -- Hugo deployment.},
+  label={lst:host-hugo},
+  language=bash,
+  basicstyle=\ttfamily\scriptsize,
+  breaklines=true,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  xleftmargin=2em,
+  framexleftmargin=1.5em
+]
+#!/usr/bin/env bash
+set -euo pipefail
+PORT=${PORT:-8080}
+REPO_DIR=${1:-.}
+LOG=${2:-/tmp/host_hugo.log}
+cd "$REPO_DIR"
+
+for cfg in hugo.toml hugo.yaml hugo.yml \
+           config.toml config.yaml config.yml; do
+  if [ -f "$cfg" ]; then
+    hugo server -p "$PORT" --bind 0.0.0.0 \
+      >>"$LOG" 2>&1 &
+    echo $! > /tmp/host_hugo.pid; exit 0
+  fi
+done
+
+if [ -f public/index.html ]; then
+  python3 -m http.server "$PORT" --directory public \
+    >>"$LOG" 2>&1 &
+  echo $! > /tmp/host_hugo.pid; exit 0
+fi
+if [ -f docs/index.html ]; then
+  python3 -m http.server "$PORT" --directory docs \
+    >>"$LOG" 2>&1 &
+  echo $! > /tmp/host_hugo.pid; exit 0
+fi
+if [ -f index.html ]; then
+  python3 -m http.server "$PORT" >>"$LOG" 2>&1 &
+  echo $! > /tmp/host_hugo.pid; exit 0
+fi
+
+echo "[hugo] No recognized entrypoint" | tee -a "$LOG"
+exit 2
+\end{lstlisting}
+
+\begin{lstlisting}[
+  caption={\texttt{host\_hexo.sh} -- Hexo deployment.},
+  label={lst:host-hexo},
+  language=bash,
+  basicstyle=\ttfamily\scriptsize,
+  breaklines=true,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  xleftmargin=2em,
+  framexleftmargin=1.5em
+]
+#!/usr/bin/env bash
+set -euo pipefail
+PORT=${PORT:-8080}
+REPO_DIR=${1:-.}
+LOG=${2:-/tmp/host_hexo.log}
+cd "$REPO_DIR"
+
+if [ -f package.json ]; then
+  npm install --silent || true
+  npx hexo server -p "$PORT" --silent \
+    >>"$LOG" 2>&1 &
+  echo $! > /tmp/host_hexo.pid; exit 0
+fi
+
+if [ -f index.html ]; then
+  python3 -m http.server "$PORT" >>"$LOG" 2>&1 &
+  echo $! > /tmp/host_hexo.pid; exit 0
+fi
+
+echo "[hexo] No recognized entrypoint" | tee -a "$LOG"
+exit 2
+\end{lstlisting}
+
+\begin{lstlisting}[
+  caption={\texttt{host\_react.sh} -- React deployment.},
+  label={lst:host-react},
+  language=bash,
+  basicstyle=\ttfamily\scriptsize,
+  breaklines=true,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  xleftmargin=2em,
+  framexleftmargin=1.5em
+]
+#!/usr/bin/env bash
+set -euo pipefail
+PORT=${PORT:-8080}
+REPO_DIR=${1:-.}
+LOG=${2:-/tmp/host_react.log}
+cd "$REPO_DIR"
+
+if [ -f package.json ]; then
+  npm install --silent || true
+  export PORT="$PORT"
+  npm start >>"$LOG" 2>&1 &
+  echo $! > /tmp/host_react.pid; exit 0
+fi
+
+for vf in vite.config.ts vite.config.js; do
+  if [ -f "$vf" ]; then
+    npm install --silent || true
+    npm run dev -- --host 0.0.0.0 --port "$PORT" \
+      >>"$LOG" 2>&1 &
+    echo $! > /tmp/host_react.pid; exit 0
+  fi
+done
+
+for d in dist build; do
+  if [ -f "$d/index.html" ]; then
+    python3 -m http.server "$PORT" --directory "$d" \
+      >>"$LOG" 2>&1 &
+    echo $! > /tmp/host_react.pid; exit 0
+  fi
+done
+
+if [ -f index.html ]; then
+  python3 -m http.server "$PORT" >>"$LOG" 2>&1 &
+  echo $! > /tmp/host_react.pid; exit 0
+fi
+
+echo "[react] No recognized entrypoint" | tee -a "$LOG"
+exit 2
+\end{lstlisting}
+
+\begin{lstlisting}[
+  caption={\texttt{host\_next.sh} -- Next.js deployment.},
+  label={lst:host-next},
+  language=bash,
+  basicstyle=\ttfamily\scriptsize,
+  breaklines=true,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  xleftmargin=2em,
+  framexleftmargin=1.5em
+]
+#!/usr/bin/env bash
+set -euo pipefail
+PORT=${PORT:-8080}
+REPO_DIR=${1:-.}
+LOG=${2:-/tmp/host_next.log}
+cd "$REPO_DIR"
+
+if [ -f package.json ]; then
+  npm install --silent || true
+  npm run build --silent || true
+  PORT="$PORT" npm run start >>"$LOG" 2>&1 &
+  echo $! > /tmp/host_next.pid; exit 0
+fi
+
+for sub in website web; do
+  if [ -f "$sub/package.json" ]; then
+    (cd "$sub" && npm install --silent || true \
+      && npm run build --silent || true \
+      && PORT="$PORT" npm run start >>"$LOG" 2>&1 &)
+    echo $! > /tmp/host_next.pid; exit 0
+  fi
+done
+
+for d in out _next/static .; do
+  if [ -f "$d/index.html" ] || [ -d "$d" ]; then
+    python3 -m http.server "$PORT" --directory "$d" \
+      >>"$LOG" 2>&1 &
+    echo $! > /tmp/host_next.pid; exit 0
+  fi
+done
+
+echo "[next] No recognized entrypoint" | tee -a "$LOG"
+exit 2
+\end{lstlisting}
+
+\begin{lstlisting}[
+  caption={\texttt{host\_vue.sh} -- Vue deployment.},
+  label={lst:host-vue},
+  language=bash,
+  basicstyle=\ttfamily\scriptsize,
+  breaklines=true,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  xleftmargin=2em,
+  framexleftmargin=1.5em
+]
+#!/usr/bin/env bash
+set -euo pipefail
+PORT=${PORT:-8080}
+REPO_DIR=${1:-.}
+LOG=${2:-/tmp/host_vue.log}
+cd "$REPO_DIR"
+
+if [ -f package.json ]; then
+  npm install --silent || true
+  export PORT="$PORT"
+  npm run serve >>"$LOG" 2>&1 &
+  echo $! > /tmp/host_vue.pid; exit 0
+fi
+
+for vf in vite.config.ts vite.config.js; do
+  if [ -f "$vf" ]; then
+    npm install --silent || true
+    npm run dev -- --host 0.0.0.0 --port "$PORT" \
+      >>"$LOG" 2>&1 &
+    echo $! > /tmp/host_vue.pid; exit 0
+  fi
+done
+
+if [ -f dist/index.html ]; then
+  python3 -m http.server "$PORT" --directory dist \
+    >>"$LOG" 2>&1 &
+  echo $! > /tmp/host_vue.pid; exit 0
+fi
+
+if [ -f index.html ]; then
+  python3 -m http.server "$PORT" >>"$LOG" 2>&1 &
+  echo $! > /tmp/host_vue.pid; exit 0
+fi
+
+echo "[vue] No recognized entrypoint" | tee -a "$LOG"
+exit 2
+\end{lstlisting}
+
+\begin{lstlisting}[
+  caption={\texttt{host\_express.sh} -- Express deployment.},
+  label={lst:host-express},
+  language=bash,
+  basicstyle=\ttfamily\scriptsize,
+  breaklines=true,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  xleftmargin=2em,
+  framexleftmargin=1.5em
+]
+#!/usr/bin/env bash
+set -euo pipefail
+PORT=${PORT:-8080}
+REPO_DIR=${1:-.}
+LOG=${2:-/tmp/host_express.log}
+cd "$REPO_DIR"
+
+if [ -f package.json ]; then
+  npm install --silent || true
+  export PORT="$PORT"
+  if npm run start --silent >/dev/null 2>&1; then
+    npm run start >>"$LOG" 2>&1 &
+    echo $! > /tmp/host_express.pid; exit 0
+  fi
+fi
+
+for f in server.js app.js index.js; do
+  if [ -f "$f" ]; then
+    npm install --silent || true
+    export PORT="$PORT"
+    node "$f" >>"$LOG" 2>&1 &
+    echo $! > /tmp/host_express.pid; exit 0
+  fi
+done
+
+if [ -f backend/package.json ]; then
+  (cd backend && npm install --silent || true \
+    && export PORT="$PORT" \
+    && npm run start >>"$LOG" 2>&1 &)
+  echo $! > /tmp/host_express.pid; exit 0
+fi
+
+echo "[express] No recognized entrypoint" \
+  | tee -a "$LOG"
+exit 2
+\end{lstlisting}
+
+\begin{lstlisting}[
+  caption={\texttt{host\_pelican.sh} -- Pelican deployment.},
+  label={lst:host-pelican},
+  language=bash,
+  basicstyle=\ttfamily\scriptsize,
+  breaklines=true,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  xleftmargin=2em,
+  framexleftmargin=1.5em
+]
+#!/usr/bin/env bash
+set -euo pipefail
+PORT=${PORT:-8080}
+REPO_DIR=${1:-.}
+LOG=${2:-/tmp/host_pelican.log}
+cd "$REPO_DIR"
+
+if [ -f pelicanconf.py ]; then
+  pip install -r requirements.txt || true
+  pelican content || true
+  python3 -m http.server "$PORT" --directory output \
+    >>"$LOG" 2>&1 &
+  echo $! > /tmp/host_pelican.pid; exit 0
+fi
+
+if [ -f publishconf.py ]; then
+  pip install -r requirements.txt || true
+  pelican content -s publishconf.py || true
+  python3 -m http.server "$PORT" --directory output \
+    >>"$LOG" 2>&1 &
+  echo $! > /tmp/host_pelican.pid; exit 0
+fi
+
+if [ -f output/index.html ]; then
+  python3 -m http.server "$PORT" --directory output \
+    >>"$LOG" 2>&1 &
+  echo $! > /tmp/host_pelican.pid; exit 0
+fi
+
+if [ -f index.html ]; then
+  python3 -m http.server "$PORT" >>"$LOG" 2>&1 &
+  echo $! > /tmp/host_pelican.pid; exit 0
+fi
+
+echo "[pelican] No recognized entrypoint" \
+  | tee -a "$LOG"
+exit 2
+\end{lstlisting}
+
+\begin{lstlisting}[
+  caption={\texttt{host\_quarto.sh} -- Quarto deployment.},
+  label={lst:host-quarto},
+  language=bash,
+  basicstyle=\ttfamily\scriptsize,
+  breaklines=true,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  xleftmargin=2em,
+  framexleftmargin=1.5em
+]
+#!/usr/bin/env bash
+set -euo pipefail
+PORT=${PORT:-8080}
+REPO_DIR=${1:-.}
+LOG=${2:-/tmp/host_quarto.log}
+cd "$REPO_DIR"
+
+if [ -f _quarto.yml ] || [ -f _quarto.yaml ]; then
+  quarto render || true
+  python3 -m http.server "$PORT" --directory _site \
+    >>"$LOG" 2>&1 &
+  echo $! > /tmp/host_quarto.pid; exit 0
+fi
+
+for d in _site docs .; do
+  if [ -f "$d/index.html" ]; then
+    python3 -m http.server "$PORT" --directory "$d" \
+      >>"$LOG" 2>&1 &
+    echo $! > /tmp/host_quarto.pid; exit 0
+  fi
+done
+
+echo "[quarto] No recognized entrypoint" \
+  | tee -a "$LOG"
+exit 2
+\end{lstlisting}
+
+\begin{lstlisting}[
+  caption={\texttt{host\_flask.sh} -- Flask deployment.},
+  label={lst:host-flask},
+  language=bash,
+  basicstyle=\ttfamily\scriptsize,
+  breaklines=true,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  xleftmargin=2em,
+  framexleftmargin=1.5em
+]
+#!/usr/bin/env bash
+set -euo pipefail
+PORT=${PORT:-8080}
+REPO_DIR=${1:-.}
+LOG=${2:-/tmp/host_flask.log}
+cd "$REPO_DIR"
+
+if [ -f app.py ]; then
+  pip install -r requirements.txt || true
+  export FLASK_APP=app.py
+  export FLASK_ENV=development
+  export FLASK_RUN_PORT="$PORT"
+  flask run --host=0.0.0.0 >>"$LOG" 2>&1 &
+  echo $! > /tmp/host_flask.pid; exit 0
+fi
+
+if [ -f wsgi.py ]; then
+  pip install -r requirements.txt || true
+  export FLASK_APP=wsgi.py
+  export FLASK_ENV=development
+  export FLASK_RUN_PORT="$PORT"
+  flask run --host=0.0.0.0 >>"$LOG" 2>&1 &
+  echo $! > /tmp/host_flask.pid; exit 0
+fi
+
+if [ -f static/index.html ]; then
+  python3 -m http.server "$PORT" --directory static \
+    >>"$LOG" 2>&1 &
+  echo $! > /tmp/host_flask.pid; exit 0
+fi
+
+echo "[flask] No recognized entrypoint" \
+  | tee -a "$LOG"
+exit 2
+\end{lstlisting}
