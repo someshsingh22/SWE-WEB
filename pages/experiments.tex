@@ -1,20 +1,16 @@
 \section{Experimental Setup}
 \label{sec:experiments}
-We evaluate six configurations spanning four autonomous coding agents and four frontier language models, designed to enable controlled ablation of the agent scaffold and the underlying model independently.
+We evaluate eleven configurations spanning five autonomous coding agents and nine frontier language models, designed to enable controlled ablation of the agent scaffold and the underlying model independently.
 
-\paragraph{Agents}
-We select four prominent coding agent frameworks that represent the current landscape of autonomous software engineering tools: \textbf{OpenCode}~\cite{opencode_ai}, \textbf{Aider}~\cite{aider_chat}, \textbf{Codex}~\cite{chen2021codex}, and \textbf{Claude-Code}~\cite{anthropic_claude_code}.
-Each framework provides a distinct combination of scaffolding capabilities including tool integration, file-system access, and context management while many other commercial and open-source agents derive from or build upon these architectures. To ensure fair comparison, all agents are evaluated under the same two-phase protocol described in Appendix~\ref{subsection: agent evaluation}: a read-only \emph{planning} phase in which the agent produces a structured optimization plan, followed by a writable \emph{execution} phase in which the agent implements only the changes specified in its own plan.
+\paragraph{Agents.}
+We select five coding agent frameworks: \textbf{OpenCode}~\cite{opencode_ai}, \textbf{Aider}~\cite{aider_chat}, \textbf{Codex}~\cite{chen2021codex}, \textbf{Claude~Code}~\cite{anthropic_claude_code}, and \textbf{Gemini}\footnote{\url{https://gemini.google.com/}}.
+Each provides a distinct combination of scaffolding capabilities (tool integration, file-system access, context management). Codex, Claude~Code, and Gemini are proprietary systems tightly coupled to their respective model families. OpenCode and Aider are open-source frameworks that support multiple backend LLMs, enabling clean model ablations at fixed scaffold. All agents are evaluated under the same two-phase protocol described in Appendix~\ref{subsection: agent evaluation}: a read-only \emph{planning} phase in which the agent produces a structured optimization plan, followed by a writable \emph{execution} phase in which the agent implements only the changes specified in its own plan.
 
-\paragraph{Language models}
-We pair each agent with a frontier coding LLM. Codex and Claude-Code are proprietary systems tuned to their respective model families (OpenAI and Anthropic), so they are each evaluated with their native model: Codex with \textbf{GPT-5}~\cite{openai_gpt5_page} and Claude~Code with \textbf{Claude~Sonnet\,4.5}~\cite{anthropic_claude_sonnet_45}.
-To enable a clean LLM ablation at fixed agent scaffold, we use \textbf{OpenCode}, an open source coding agent which supports multiple LLMs, and evaluate it with three models: \textbf{GPT-5}, \textbf{GPT-5.1\,Codex}, \textbf{Claude-Sonnet-4.5} and \textbf{GPT-4.1}.
-Aider is similarly evaluated with GPT-5, completing a GPT-5 triad (OpenCode, Aider, Codex) that isolates the agent scaffold at fixed model capacity.
-% Table~\ref{tab:agent-configs} summarizes the six configurations.
-All agents receive identical inputs repository snapshot, deterministic host script, baseline CWVs for both device profiles, and LCP/CLS/INP attribution signals under reasoning and output token budget constraints detailed in \S\ref{sec:agent_protocol}.
+\paragraph{Language models.}
+Codex is evaluated with its native \textbf{GPT-5}~\cite{openai_gpt5_page}. Claude~Code is evaluated with four Anthropic models: \textbf{Sonnet\,4.5}~\cite{anthropic_claude_sonnet_45}, \textbf{Sonnet\,4.6}, \textbf{Opus\,4.6}~\cite{anthropic_claude_opus_4_6_system_card_2026}, and \textbf{Opus\,4.7}. Gemini is evaluated with \textbf{2.5\,Pro} and \textbf{2.5\,Flash}. To enable a clean LLM ablation at fixed agent scaffold, we evaluate OpenCode with three models: \textbf{GPT-5.1\,Codex}, \textbf{GPT-5}, and \textbf{GPT-4.1}~\cite{openai_gpt41_2025}. Aider is evaluated with GPT-5, completing a GPT-5 triad (OpenCode, Aider, Codex) that isolates the agent scaffold at fixed model. All agents receive identical inputs: repository snapshot, deterministic host script, baseline CWV for both device profiles, and LCP/CLS/INP attribution signals, under reasoning and output token budget constraints detailed in \S\ref{sec:agent_protocol}.
 
 \paragraph{Evaluation subset.}
-From the full benchmark (\S\ref{sec:bench_sources}), we evaluate on a stratified subset of 300 websites spanning all 11 frameworks, selected to cover a range of baseline CWV profiles: sites with at least one Poor metric (requiring improvement), sites in the Needs Improvement range, and sites where all metrics are already Good (requiring restraint).
+From the full benchmark (\S\ref{sec:bench_sources}), we evaluate on a stratified subset of 300 websites spanning all 17 frameworks, selected to cover a range of baseline CWV profiles: sites with at least one Poor metric (requiring improvement), sites in the Needs Improvement range, and sites where all metrics are already Good (requiring restraint).
 Each website is measured over 30 independent runs per device profile (mobile and desktop) as described in \S\ref{sec:cwv-evaluation}, yielding six metrics per configuration: LCP, INP, and CLS on each of mobile and desktop.
 We aggregate per-site scores using the median across runs to obtain robust baselines and post-agent estimates.
 

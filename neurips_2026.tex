@@ -135,22 +135,21 @@ resistance to data contamination, and real-world impact. We introduce
 \OurBench, a benchmark and execution environment that evaluates autonomous
 coding agents on improving Core Web Vitals (CWVs)---loading speed, visual
 stability, and responsiveness---for real, deployed websites.
-\OurBench comprises 2{,}741 GitHub Pages repositories spanning 11 modern
-web frameworks (including React, Vue, Next.js, Hugo, and Jekyll) and
+\OurBench comprises 2{,}741 GitHub repositories spanning 17 web
+frameworks (including React, Vue, Next.js, Hugo, and Jekyll) and
 73{,}000 deduplicated webpages, each paired with its complete source code
-and Docker image. We reconstruct deterministic build and deployment
+and a containerized deployment. We reconstruct deterministic build and deployment
 pipelines, integrate a controlled CWV measurement harness, and enforce
 strict regression checks to prevent reward hacking. Because CWVs are
 measured dynamically from deployed pages rather than matched against
 reference patches, the benchmark inherently resists data contamination and
-can be continuously refreshed with new repositories. We evaluate six
-configurations of four frontier coding agents (OpenCode, Codex, Aider,
-Claude-Code) paired with four LLMs (GPT-5, GPT-5.1\,Codex, GPT-4.1,
-Claude-Sonnet\,4.5) on a stratified subset of 300 websites under a
-structured plan-then-implement protocol. The best configuration (OpenCode
-+ GPT-5.1\,Codex) achieves Pareto CWV improvement on 57\% of sites, while
-weaker configurations degrade more sites than they help, with degradation
-rates reaching 90\%. These findings position CWV optimization as a
+can be continuously refreshed with new repositories. We evaluate eleven
+configurations of five frontier coding agents (OpenCode, Codex, Aider,
+Claude~Code, Gemini) paired with nine LLMs on a stratified subset of 300
+websites under a structured plan-then-implement protocol. The best
+configuration (OpenCode + GPT-5.1\,Codex) achieves Pareto CWV improvement
+on 57\% of sites, while weaker configurations degrade more sites than they
+help, with degradation rates reaching 90\%. These findings position CWV optimization as a
 frontier challenge that exposes fundamental gaps in current agents' ability
 to perform goal-directed, multi-objective software engineering, and
 demonstrate the value of impact-aligned, execution-based evaluation. We
