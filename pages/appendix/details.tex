@@ -141,7 +141,7 @@ Neither \texttt{styles.css} nor \texttt{images/index-bg.webp} exists in the repo
 \section{Detailed Repository Filtering Procedure}
 \label{app:repo-filtering}
 
-This appendix describes the repository filtering procedure used to identify candidate web projects for SWE-Experience-Bench. The purpose of this filtering stage is not merely to find repositories that contain HTML, CSS, or JavaScript files. Instead, our aim is more precise: we seek source-backed repositories that are likely to correspond to real public websites and that are suitable candidates for downstream local deployment, validation, and Core Web Vitals (CWV) measurement. In other words, the filtering pipeline is designed to answer three increasingly specific questions: first, does the repository structurally look like a web project; second, does its content provide concrete evidence of a deployable frontend, static-site, or documentation-site stack; and third, is the repository associated with a public website through repository metadata?
+This appendix describes the repository filtering procedure used to identify candidate web projects for \OurBench. The purpose of this filtering stage is not merely to find repositories that contain HTML, CSS, or JavaScript files. Instead, our aim is more precise: we seek source-backed repositories that are likely to correspond to real public websites and that are suitable candidates for downstream local deployment, validation, and Core Web Vitals (CWV) measurement. In other words, the filtering pipeline is designed to answer three increasingly specific questions: first, does the repository structurally look like a web project; second, does its content provide concrete evidence of a deployable frontend, static-site, or documentation-site stack; and third, is the repository associated with a public website through repository metadata?
 
 To achieve this at scale, we use a three-stage static filtering pipeline over the GitHub Code 2025 corpus. Stage 1 performs a lightweight path-level scan over all repositories using file paths, file sizes, and repository identifiers. Stage 2 performs selective content-level verification only on repositories that pass the initial structural filter. Stage 3 queries GitHub repository metadata and retains repositories that expose a valid public homepage URL in the repository ``About'' field. The output of this pipeline is a smaller, higher-quality candidate pool that is likely to contain real website projects. Later stages of the benchmark pipeline then test whether these candidates can actually be deployed, rendered, validated against their public versions, and measured for CWV performance.
 
@@ -607,7 +607,47 @@ Equivalently, the pipeline asks:
 \end{array}
 \]
 
-This filtering pipeline should be understood as a scalable candidate-mining procedure rather than a final proof of benchmark validity. It intentionally prioritizes high recall in early stages and then improves precision through content verification and public-homepage association. The final guarantees required by SWE-Experience-Bench are provided only in later stages: deterministic local deployment, comparison against the corresponding public rendering, visual and content validation, and repeated CWV measurement.
+This filtering pipeline should be understood as a scalable candidate-mining procedure rather than a final proof of benchmark validity. It intentionally prioritizes high recall in early stages and then improves precision through content verification and public-homepage association. The final guarantees required by \OurBench are provided only in later stages: deterministic local deployment, comparison against the corresponding public rendering, visual and content validation, and repeated CWV measurement.
+
+\section{Benchmark Dataset Figures}
+\label{app:dataset-figures}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{figures/EDA_PLOTS.pdf}
+  \caption{\textbf{Exploratory dataset statistics.}
+  \textbf{Top-left:} third-party package frequency (long-tailed).
+  \textbf{Top-right:} framework distribution (log scale); Static HTML dominates, followed by Hexo/Hugo/Jekyll.
+  \textbf{Bottom-left:} transfer size and \texttt{DOMContentLoaded} rise together toward higher percentiles.
+  \textbf{Bottom-right:} LCP p75 increases with third-party domain count, then plateaus.}
+  \Description{A four-panel exploratory data figure. The top-left panel shows a long-tailed package frequency distribution. The top-right panel shows framework counts on a log scale with Static HTML as the largest category. The bottom-left panel shows transfer size increasing with DOMContentLoaded. The bottom-right panel shows LCP p75 increasing with third-party domain count before flattening.}
+  \label{fig:eda_plots}
+\end{figure}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/FILES_EDA.pdf}
+  \caption{\textbf{Repository size distribution (final benchmark).}
+  Histogram of the number of files per repository. The distribution is strongly right-skewed: most repositories contain relatively few files, while a small fraction are much larger (long tail reaching into the thousands of files), indicating substantial variability in repo scale.}
+  \Description{A histogram of repository file counts in the final benchmark. Most repositories have relatively few files, while a long right tail extends to much larger projects with hundreds or thousands of files.}
+  \label{fig:files_eda}
+\end{figure}
+
+\begin{figure*}[t]
+  \centering  \includegraphics[width=\textwidth]{figures/Benchmark_construction.pdf}
+    \caption{Benchmark curation pipeline: Starting from large-scale GitHub repository corpora (Stack dedup-v2 and GH-25), we retain deployable GitHub Pages sites (\texttt{*.github.io}), apply deterministic quality filters, identify frameworks and assign deterministic deployment scripts, validate local deployments against the corresponding live GitHub Pages rendering, and expand each task with bounded internal page discovery and template-level deduplication. The final benchmark contains 2{,}741 repositories and 73k deduplicated internal webpages.}
+  \Description{A benchmark curation pipeline diagram. Large repository corpora are filtered to GitHub Pages sites, passed through quality filtering, framework identification, deterministic deployment assignment, live-versus-local validation, and internal page discovery with deduplication, yielding the final benchmark of validated repositories and internal webpages.}
+  \label{fig:curation_pipeline}
+\end{figure*}
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\linewidth]{figures/GH25_Repo_Filtering.pdf}
+    \caption{
+    GH-25 three-stage repository filtering pipeline. Starting from approximately 1.0M repositories in the GH-25 snapshot, we first apply path-level structural filtering to identify repositories that resemble web projects. We then perform content-level verification over informative files to confirm framework, build, and deployment signals, producing 10,420 candidate repositories. Finally, we retain repositories associated with a valid public website through the GitHub About/homepage field and deduplicate by homepage URL, yielding 8,043 website candidates for downstream deployment and CWV benchmarking.
+    }
+    \label{fig:gh25_filtering_pipeline}
+\end{figure}
 
 \section{Benchmark Creation Pipeline}
 
@@ -1834,8 +1874,8 @@ After execution, \texttt{plan.md} is removed from the repository to prevent this
 \subsection{Regression Checks and Failure Handling}
 \label{app:validation}
 \label{app:regression}
-\arnav{ayush verify}
-We enforce (i) GPT-4.1 screenshot similarity, (ii) DOM LSH match, (iii) content Jaccard similarity $\geq 0.97$, and (iv) no new console errors. In addition to performance measurement, the evaluation framework enforces a set of regression and safety checks to ensure that performance improvements do not come at the expense of correctness or content integrity. These checks include visual regression testing, DOM structure matching, and content matching to verify that visible output remains unchanged. \arnav{We treat any such failure as invalid. SOMESH} We provide prompts and thresholds in the released harness. Browser console logs are inspected for runtime errors, with particular emphasis on detecting missing resources such as HTTP 404 errors indicating broken asset references.
+% \arnav{ayush verify}
+We enforce (i) GPT-4.1 screenshot similarity, (ii) DOM LSH match, (iii) content Jaccard similarity $\geq 0.97$, and (iv) no new console errors. In addition to performance measurement, the evaluation framework enforces a set of regression and safety checks to ensure that performance improvements do not come at the expense of correctness or content integrity. These checks include visual regression testing, DOM structure matching, and content matching to verify that visible output remains unchanged. Any such failure marks the attempt as invalid. We provide prompts and thresholds in the released harness. Browser console logs are inspected for runtime errors, with particular emphasis on detecting missing resources such as HTTP 404 errors indicating broken asset references.
 
 % \section{Framework Identification Rules and Host Scripts}
 % \label{app:framework_rules}
@@ -1918,7 +1958,7 @@ WebCode2M & \xmark & \xmark & \xmark & \pmark & HTML, CSS, JS \\
 EnConda-Bench & \xmark & \xmark & \cmark & \cmark & Shell, Py \\
 SWE-eval & \xmark & \xmark & \cmark & \cmark & Shell, Py \\
 Interaction2Code & \cmark & \cmark & \xmark & \pmark & HTML, CSS, JS \\
-\textbf{SWE-Experience-Bench*} & \textbf{\cmark} & \textbf{\cmark} & \textbf{\cmark} & \textbf{\cmark} & \textbf{15 languages, including JS, Py, TS, PHP, Java, Go, Ruby, Rust, C, and C++} \\
+\textbf{\OurBench*} & \textbf{\cmark} & \textbf{\cmark} & \textbf{\cmark} & \textbf{\cmark} & \textbf{15 languages, including JS, Py, TS, PHP, Java, Go, Ruby, Rust, C, and C++} \\
 \bottomrule
 \end{tabular}
 \end{table*}
