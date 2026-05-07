@@ -1,0 +1,10 @@
+\section{Limitations}
+
+\paragraph{Measurement scope.}
+All CWV measurements are collected in a controlled Playwright environment with simulated device profiles and fixed network conditions (\S\ref{sec:cwv-evaluation}). Lab-field validation against CrUX confirms that relative ordering is preserved (Spearman $\rho = 0.87$; Appendix~\ref{app:crux-validation}), but absolute values depend on user devices, network conditions, and geographic latency. CWV itself captures loading (LCP), stability (CLS), and responsiveness (INP) but not accessibility, security, SEO, or functional correctness; an agent that improves CWV while degrading these dimensions would score well but produce a net-negative outcome.
+
+\paragraph{Benchmark scope.}
+The benchmark covers static and semi-static sites deployable from a GitHub repository, excluding server-rendered applications, authentication-gated SPAs, and sites where CWV depends on third-party scripts or API latency. We evaluate on 298 of 2{,}741 repositories due to the cost of 30 browser measurements per device profile per agent configuration. The stratified selection covers all 17 frameworks, but may not capture long-tail failure modes in the full benchmark.
+
+\paragraph{Single-round protocol.}
+Each agent receives one opportunity to plan and patch. Developers iterate in practice: measure, optimize, re-measure, and refine. Our protocol does not evaluate iterative refinement, which may understate the potential of systems with feedback-driven improvement capabilities.
